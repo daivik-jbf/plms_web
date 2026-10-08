@@ -158,6 +158,59 @@ describe('AuditPage', () => {
       expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
     });
 
+    it('ignores a Load more that arrives after the filters changed', async () => {
+      const stale = entry({ id: 'old2', summary: 'Stale page two row', label: 'Reactivated' });
+      const fresh = entry({ id: 'new1', summary: 'Fresh content row', label: 'Content edited' });
+      let releaseMore: (response: MockResponse) => void = () => undefined;
+      const held = new Promise<MockResponse>((resolve) => {
+        releaseMore = resolve;
+      });
+      startServer((url) => {
+        if (url.searchParams.get('cursor') === 'CURSOR-OLD') return held;
+        if (url.searchParams.get('category') === 'content') return { body: { items: [fresh], nextCursor: 'CURSOR-NEW' } };
+        return { body: { items: [entry()], nextCursor: 'CURSOR-OLD' } };
+      });
+      renderAudit();
+      await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+      await userEvent.selectOptions(screen.getByLabelText('Category'), 'content');
+      expect(await screen.findByText('Fresh content row')).toBeInTheDocument();
+      releaseMore({ body: { items: [stale], nextCursor: null } });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.getByText('Fresh content row')).toBeInTheDocument();
+      expect(screen.queryByText('Stale page two row')).not.toBeInTheDocument();
+      expect(screen.queryByText("Anita Rao changed Ben Okoye's role from Staff to Admin")).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Load more' })).toBeEnabled();
+    });
+
+    it('ignores a first page that arrives after a newer filter change', async () => {
+      let releaseFirst: (response: MockResponse) => void = () => undefined;
+      const held = new Promise<MockResponse>((resolve) => {
+        releaseFirst = resolve;
+      });
+      startServer((url) => {
+        if (url.searchParams.get('category') === 'content') return { body: { items: [entry({ id: 'new1', summary: 'Fresh content row' })], nextCursor: null } };
+        return held;
+      });
+      renderAudit();
+      await userEvent.selectOptions(screen.getByLabelText('Category'), 'content');
+      expect(await screen.findByText('Fresh content row')).toBeInTheDocument();
+      releaseFirst({ body: { items: [entry({ id: 'old1', summary: 'Stale first page row' })], nextCursor: null } });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.getByText('Fresh content row')).toBeInTheDocument();
+      expect(screen.queryByText('Stale first page row')).not.toBeInTheDocument();
+    });
+
+    it('keeps the loaded rows and shows an error when Load more fails', async () => {
+      startServer((url) =>
+        url.searchParams.get('cursor') ? { status: 500, body: {} } : { body: { items: [entry()], nextCursor: 'CURSOR-1' } },
+      );
+      renderAudit();
+      await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
+      expect(screen.getByText("Anita Rao changed Ben Okoye's role from Staff to Admin")).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Load more' })).toBeEnabled();
+    });
+
     it('shows an empty state with Clear filters when nothing matches', async () => {
       startServer({});
       renderAudit('/audit?q=zzz');

@@ -30,6 +30,8 @@ export function AuditPage() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
   const pinged = useRef(false);
+  // Bumped whenever the list is reloaded, so a slow "Load more" for an older list can tell it is stale.
+  const generation = useRef(0);
 
   // One "opened" marker per visit. The ref also keeps React StrictMode's double effect from sending two.
   useEffect(() => {
@@ -44,6 +46,7 @@ export function AuditPage() {
 
   useEffect(() => {
     let cancelled = false;
+    generation.current += 1;
     setState({ status: 'loading' });
     listAudit(filters)
       .then((page) => {
@@ -66,13 +69,16 @@ export function AuditPage() {
   );
 
   async function loadMore() {
-    if (state.status !== 'ready' || !state.nextCursor) return;
+    if (state.status !== 'ready' || !state.nextCursor || state.loadingMore) return;
     const { items, nextCursor } = state;
+    const started = generation.current;
     setState({ ...state, loadingMore: true, moreError: null });
     try {
       const page = await listAudit(filters, nextCursor);
+      if (started !== generation.current) return;
       setState({ status: 'ready', items: [...items, ...page.items], nextCursor: page.nextCursor, loadingMore: false, moreError: null });
     } catch (error) {
+      if (started !== generation.current) return;
       setState({ status: 'ready', items, nextCursor, loadingMore: false, moreError: describeError(error) });
     }
   }
