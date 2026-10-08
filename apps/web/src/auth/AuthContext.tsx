@@ -2,12 +2,12 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useM
 import { login, logout, restoreSession, type User } from '../api/auth';
 import { setSessionLostHandler } from '../api/client';
 
-type AuthState = { status: 'loading' } | { status: 'anonymous' } | { status: 'authenticated'; user: User };
+type AuthState = { status: 'loading' } | { status: 'anonymous'; notice?: string } | { status: 'authenticated'; user: User };
 
 interface AuthContextValue {
   state: AuthState;
   signIn: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
+  signOut: (notice?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -35,9 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: 'authenticated', user });
   }, []);
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (notice?: string) => {
     await logout().catch(() => undefined);
-    setState({ status: 'anonymous' });
+    setState({ status: 'anonymous', notice });
   }, []);
 
   const value = useMemo(() => ({ state, signIn, signOut }), [state, signIn, signOut]);

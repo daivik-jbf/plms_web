@@ -8,6 +8,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { AccountPage } from './pages/account/AccountPage';
 import { AuditPage } from './pages/audit/AuditPage';
 import { StaffPage } from './pages/staff/StaffPage';
 
@@ -21,6 +22,7 @@ export function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route element={<AdminRoute />}>
             <Route path="/staff" element={<StaffPage />} />
             <Route path="/audit" element={<AuditPage />} />

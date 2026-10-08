@@ -46,3 +46,8 @@ export const resetPassword = (token: string, newPassword: string): Promise<void>
 
 export const fetchPasswordPolicy = (): Promise<{ minLength: number; maxLength: number }> =>
   api('/api/auth/password-policy', { auth: false });
+
+export const changePassword = (currentPassword: string, newPassword: string): Promise<void> =>
+  api('/api/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } });
+
+export const logoutAll = (): Promise<void> => api('/api/auth/logout-all', { method: 'POST' });

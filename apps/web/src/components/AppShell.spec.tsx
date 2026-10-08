@@ -61,6 +61,7 @@ describe('AppShell', () => {
     expect(within(nav).getByRole('link', { name: 'Staff' })).toHaveAttribute('href', '/staff');
     expect(within(nav).getByRole('link', { name: 'Audit log' })).toHaveAttribute('href', '/audit');
     expect(within(nav).getByText('Admin')).toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'My account' })).toHaveAttribute('href', '/account');
   });
 
   it('hides the Admin section from Staff', async () => {
@@ -69,5 +70,6 @@ describe('AppShell', () => {
     expect(within(nav).queryByRole('link', { name: 'Staff' })).not.toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: 'Audit log' })).not.toBeInTheDocument();
     expect(within(nav).queryByText('Admin')).not.toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'My account' })).toHaveAttribute('href', '/account');
   });
 });

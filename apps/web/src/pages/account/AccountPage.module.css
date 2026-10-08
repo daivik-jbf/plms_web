@@ -1,0 +1,8 @@
+.section {
+  max-width: 32rem;
+  margin-bottom: var(--space-12);
+}
+
+.form {
+  margin-top: var(--space-4);
+}

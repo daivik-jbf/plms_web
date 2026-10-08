@@ -10,7 +10,8 @@ import { AuthLayout } from './AuthLayout';
 export function LoginPage() {
   const { state, signIn } = useAuth();
   const navigate = useNavigate();
-  const notice = (useLocation().state as { notice?: string } | null)?.notice;
+  const locationNotice = (useLocation().state as { notice?: string } | null)?.notice;
+  const notice = locationNotice ?? (state.status === 'anonymous' ? state.notice : undefined);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState('');
