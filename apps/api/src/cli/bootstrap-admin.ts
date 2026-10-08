@@ -22,6 +22,11 @@ export async function bootstrapAdmin(
   }
 
   const pending = await deps.invites.findPendingByEmail(email.data);
+  if (pending && pending.role !== 'admin') {
+    throw new Error(
+      `A pending ${pending.role} invite already exists for ${email.data}. Cancel it first or use a different email.`,
+    );
+  }
   const result = pending
     ? await deps.invites.resend(null, pending.id, { sendEmail: false })
     : await deps.invites.create(null, { email: email.data, name: name.data, role: 'admin' }, { sendEmail: false });

@@ -1,6 +1,6 @@
-import { Global, Inject, Injectable, Module, type OnApplicationShutdown } from '@nestjs/common';
+import { Global, Inject, Injectable, Logger, Module, type OnApplicationShutdown } from '@nestjs/common';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 import { ENV } from '../config/config.module';
 import type { Env } from '../config/env';
 import * as schema from './schema';
@@ -11,6 +11,18 @@ export const DB = Symbol('DB');
 export type Database = NodePgDatabase<typeof schema>;
 export type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 export type DbExecutor = Database | DbTransaction;
+
+const poolLogger = new Logger('PgPool');
+
+// An idle client that loses its connection (database restart, network blip) makes the pool emit 'error'.
+// Without a listener Node treats that as an unhandled 'error' event and the whole process exits.
+export function createPool(config: PoolConfig): Pool {
+  const pool = new Pool(config);
+  pool.on('error', (error) => {
+    poolLogger.error(`Idle database client error: ${error.message}`);
+  });
+  return pool;
+}
 
 @Injectable()
 class PoolShutdown implements OnApplicationShutdown {
@@ -28,7 +40,7 @@ class PoolShutdown implements OnApplicationShutdown {
       provide: PG_POOL,
       inject: [ENV],
       useFactory: (env: Env) =>
-        new Pool({
+        createPool({
           connectionString: env.DATABASE_URL,
           max: 10,
           connectionTimeoutMillis: 5000,

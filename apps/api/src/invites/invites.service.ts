@@ -4,6 +4,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull } from 'drizzle-orm';
@@ -54,6 +55,8 @@ const actorOf = (actor: AuthUser | null) => (actor ? { id: actor.id, role: actor
 
 @Injectable()
 export class InvitesService {
+  private readonly logger = new Logger(InvitesService.name);
+
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(ENV) private readonly env: Env,
@@ -210,7 +213,9 @@ export class InvitesService {
           to: invite.email,
           ...inviteEmail({ name: invite.name, link, expiresAt: invite.expiresAt }),
         });
-      } catch {
+      } catch (error) {
+        // Log only the mailer's message: never the link, which carries the invite token.
+        this.logger.error(`Could not send invite email: ${error instanceof Error ? error.message : String(error)}`);
         throw new BadGatewayException('The invite was saved but the email could not be sent. Use Resend to try again.');
       }
     }

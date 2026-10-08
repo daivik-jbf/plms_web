@@ -44,5 +44,7 @@ describe('app basics', () => {
       .send(JSON.stringify({ blob: 'x'.repeat(300_000) }))
       .expect(413);
     expect(res.body.statusCode).toBe(413);
+    expect(res.body.error).toBe('Payload Too Large');
+    expect(res.body.message).toBe('Request body too large.');
   });
 });

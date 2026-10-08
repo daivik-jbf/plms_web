@@ -4,7 +4,7 @@ import type { DbExecutor } from '../db/db.module';
 import { type AuditChanges, auditLog, type Role } from '../db/schema';
 import type { AuditAction } from './audit.actions';
 
-export interface AuditEntry {
+interface AuditEntry {
   actor: { id?: string | null; role?: Role | null; label?: string | null } | null;
   action: AuditAction;
   target?: { type: string; id: string; label: string };

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-export interface RequestMeta {
+interface RequestMeta {
   requestId: string;
   ip: string | null;
   userAgent: string | null;

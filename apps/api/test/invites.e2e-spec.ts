@@ -47,7 +47,11 @@ describe('invites', () => {
 
     it('is Admin-only: Staff get 403 and anonymous callers get 401 on every invite-management route', async () => {
       const body = { email: 'x@example.com', name: 'X', role: 'staff' };
+      const unknownId = '00000000-0000-4000-8000-000000000000';
       await http().post('/api/invites').send(body).expect(401);
+      await http().get('/api/invites').expect(401);
+      await http().post(`/api/invites/${unknownId}/resend`).expect(401);
+      await http().delete(`/api/invites/${unknownId}`).expect(401);
       await http().post('/api/invites').set(...bearer(staff)).send(body).expect(403);
       await http().get('/api/invites').set(...bearer(staff)).expect(403);
       await http().post('/api/invites/00000000-0000-4000-8000-000000000000/resend').set(...bearer(staff)).expect(403);
@@ -149,6 +153,28 @@ describe('invites', () => {
       await http().post('/api/invites/accept').send({ token: newToken, password: TEST_PASSWORD }).expect(201);
     });
 
+    it('audits resend and cancel without any token or hash', async () => {
+      mailer.clear();
+      const created = await invite({ email: 'audited@example.com', name: 'Audited', role: 'staff' }).expect(201);
+      const firstToken = tokenFromMail();
+      mailer.clear();
+      await http().post(`/api/invites/${created.body.id}/resend`).set(...bearer(admin)).expect(200);
+      const secondToken = tokenFromMail();
+      await http().delete(`/api/invites/${created.body.id}`).set(...bearer(admin)).expect(204);
+
+      const rows = await db.select().from(auditLog).where(eq(auditLog.targetId, created.body.id));
+      const byAction = (action: string) => rows.filter((r) => r.action === action);
+      expect(byAction('invite.resent')).toHaveLength(1);
+      expect(byAction('invite.cancelled')).toHaveLength(1);
+      expect(byAction('invite.resent')[0]).toMatchObject({ actorId: adminId, actorRole: 'admin', targetLabel: 'audited@example.com' });
+      const [stored] = await db.select().from(invites).where(eq(invites.id, created.body.id));
+      const serialized = JSON.stringify(rows);
+      expect(serialized).not.toMatch(/token|hash/i);
+      for (const secret of [firstToken, secondToken, stored.tokenHash]) {
+        expect(serialized).not.toContain(secret);
+      }
+    });
+
     it('cannot resend or cancel an invite that was already accepted', async () => {
       mailer.clear();
       const created = await invite({ email: 'accepted.already@example.com', name: 'Accepted', role: 'staff' }).expect(201);
@@ -163,13 +189,22 @@ describe('invites', () => {
     });
 
     it('lists invites with derived status', async () => {
+      mailer.clear();
+      const pending = await invite({ email: 'list.pending@example.com', name: 'List Pending', role: 'staff' }).expect(201);
+      const accepted = await invite({ email: 'list.accepted@example.com', name: 'List Accepted', role: 'staff' }).expect(201);
+      await http().post('/api/invites/accept').send({ token: tokenFromMail(), password: TEST_PASSWORD }).expect(201);
+      const cancelled = await invite({ email: 'list.cancelled@example.com', name: 'List Cancelled', role: 'staff' }).expect(201);
+      await http().delete(`/api/invites/${cancelled.body.id}`).set(...bearer(admin)).expect(204);
+      const expired = await invite({ email: 'list.expired@example.com', name: 'List Expired', role: 'staff' }).expect(201);
+      await db.update(invites).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(invites.id, expired.body.id));
+
       const res = await http().get('/api/invites').set(...bearer(admin)).expect(200);
-      const statuses = new Set(res.body.map((i: { status: string }) => i.status));
-      expect(statuses).toContain('pending');
-      expect(statuses).toContain('accepted');
-      expect(statuses).toContain('cancelled');
-      expect(statuses).toContain('expired');
-      expect(await db.select().from(users).where(eq(users.email, 'accept.me@example.com'))).toHaveLength(1);
+      const statusOf = (id: string) => res.body.find((i: { id: string }) => i.id === id)?.status;
+      expect(statusOf(pending.body.id)).toBe('pending');
+      expect(statusOf(accepted.body.id)).toBe('accepted');
+      expect(statusOf(cancelled.body.id)).toBe('cancelled');
+      expect(statusOf(expired.body.id)).toBe('expired');
+      expect(await db.select().from(users).where(eq(users.email, 'list.accepted@example.com'))).toHaveLength(1);
     });
   });
 });

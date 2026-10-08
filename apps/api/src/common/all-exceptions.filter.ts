@@ -1,3 +1,4 @@
+import { STATUS_CODES } from 'node:http';
 import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException } from '@nestjs/common';
 import type { Response } from 'express';
 import type { AppLogger } from './app-logger';
@@ -29,7 +30,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (typeof status === 'number' && status >= 400 && status < 500) {
       res.status(status).json({
         statusCode: status,
-        error: 'Bad Request',
+        error: STATUS_CODES[status] ?? 'Bad Request',
         message: CLIENT_ERROR_MESSAGES[status] ?? CLIENT_ERROR_MESSAGES[400],
         requestId,
       });
