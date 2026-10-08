@@ -73,6 +73,54 @@ describe('AcceptInvitePage', () => {
     expect(screen.queryByLabelText('New password')).not.toBeInTheDocument();
   });
 
+  it.each([
+    [429, 'ThrottlerException: Too Many Requests', 'Too many requests. Please try again in a minute.'],
+    [500, 'Something went wrong. Please try again.', 'Something went wrong. Please try again.'],
+  ])('keeps the form and what was typed after a %i', async (status, message, shown) => {
+    server(() => ({ status, body: { message } }));
+    renderPage();
+    await userEvent.type(await screen.findByLabelText('New password'), 'a long new passphrase');
+    await userEvent.type(screen.getByLabelText('Confirm password'), 'a long new passphrase');
+    await userEvent.click(screen.getByRole('button', { name: 'Set password' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(shown);
+    expect(screen.getByLabelText('New password')).toHaveValue('a long new passphrase');
+    expect(screen.getByLabelText('Confirm password')).toHaveValue('a long new passphrase');
+  });
+
+  it('keeps the form after a network failure', async () => {
+    mockFetch((url) => {
+      if (url.endsWith('/password-policy')) return { body: { minLength: 10, maxLength: 128 } };
+      if (url.endsWith('/preview')) return { body: { name: 'Anita Rao', email: 'anita@example.com' } };
+      throw new TypeError('Failed to fetch');
+    });
+    renderPage();
+    await userEvent.type(await screen.findByLabelText('New password'), 'a long new passphrase');
+    await userEvent.type(screen.getByLabelText('Confirm password'), 'a long new passphrase');
+    await userEvent.click(screen.getByRole('button', { name: 'Set password' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
+    expect(screen.getByLabelText('New password')).toHaveValue('a long new passphrase');
+  });
+
+  it('moves focus to the first invalid field once its error is shown', async () => {
+    server();
+    renderPage();
+    await userEvent.type(await screen.findByLabelText('New password'), 'a long new passphrase');
+    await userEvent.type(screen.getByLabelText('Confirm password'), 'different words here');
+    await userEvent.click(screen.getByRole('button', { name: 'Set password' }));
+    const confirm = screen.getByLabelText('Confirm password');
+    await waitFor(() => expect(confirm).toHaveFocus());
+    expect(confirm).toHaveAccessibleDescription(/do not match/i);
+  });
+
+  it('does not treat a temporary failure while checking the invite as a dead link', async () => {
+    mockFetch((url) =>
+      url.endsWith('/password-policy') ? { body: { minLength: 10, maxLength: 128 } } : { status: 503, body: { message: 'Service Unavailable' } },
+    );
+    renderPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
+    expect(screen.getByText(/reload this page/i)).toBeInTheDocument();
+  });
+
   it('explains a missing token', async () => {
     server();
     renderPage('');

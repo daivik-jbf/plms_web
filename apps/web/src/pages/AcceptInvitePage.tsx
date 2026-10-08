@@ -1,13 +1,15 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { acceptInvite, fetchPasswordPolicy, previewInvite } from '../api/auth';
-import { ApiError } from '../api/client';
+import { ApiError, describeError } from '../api/client';
 import { Alert } from '../components/Alert';
 import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { AuthLayout } from './AuthLayout';
 
 const DEAD_LINK = 'This invite link is invalid or has expired.';
+
+const isDeadLink = (error: unknown): boolean => error instanceof ApiError && error.status === 400 && error.message === DEAD_LINK;
 
 export function AcceptInvitePage() {
   const token = useSearchParams()[0].get('token');
@@ -20,14 +22,23 @@ export function AcceptInvitePage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
+  const [focusRequest, setFocusRequest] = useState<{ field: 'password' | 'confirm' } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [loadFailure, setLoadFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Focus moves only after the error text has rendered, so screen readers announce the field together
+  // with its new description.
+  useEffect(() => {
+    if (focusRequest) (focusRequest.field === 'password' ? passwordRef : confirmRef).current?.focus();
+  }, [focusRequest]);
 
   useEffect(() => {
     if (!token) return;
     fetchPasswordPolicy().then((policy) => setMinLength(policy.minLength)).catch(() => undefined);
     previewInvite(token)
       .then(setInvite)
-      .catch((error: unknown) => setLinkError(error instanceof ApiError ? error.message : DEAD_LINK));
+      .catch((error: unknown) => (isDeadLink(error) ? setLinkError(DEAD_LINK) : setLoadFailure(describeError(error))));
   }, [token]);
 
   async function onSubmit(event: FormEvent) {
@@ -37,8 +48,9 @@ export function AcceptInvitePage() {
       confirm: password === confirm ? undefined : 'The passwords do not match.',
     };
     setErrors(next);
+    setFailure(null);
     if (next.password || next.confirm) {
-      (next.password ? passwordRef : confirmRef).current?.focus();
+      setFocusRequest({ field: next.password ? 'password' : 'confirm' });
       return;
     }
     if (!token) return;
@@ -49,9 +61,12 @@ export function AcceptInvitePage() {
     } catch (error) {
       if (error instanceof ApiError && error.fieldErrors.password) {
         setErrors({ password: error.fieldErrors.password.join(' ') });
-        passwordRef.current?.focus();
+        setFocusRequest({ field: 'password' });
+      } else if (isDeadLink(error)) {
+        setLinkError(DEAD_LINK);
       } else {
-        setLinkError(error instanceof ApiError ? error.message : DEAD_LINK);
+        // Rate limits, server errors and network failures keep the form and what was typed.
+        setFailure(describeError(error));
       }
     } finally {
       setBusy(false);
@@ -63,6 +78,15 @@ export function AcceptInvitePage() {
       <AuthLayout title="Set your password">
         <Alert tone="error">{linkError}</Alert>
         <p>Ask an Admin to send you a new invite.</p>
+      </AuthLayout>
+    );
+  }
+
+  if (loadFailure) {
+    return (
+      <AuthLayout title="Set your password">
+        <Alert tone="error">{loadFailure}</Alert>
+        <p>Reload this page to try again.</p>
       </AuthLayout>
     );
   }
@@ -80,6 +104,7 @@ export function AcceptInvitePage() {
       <p>
         Welcome, {invite.name}. You are signing up as <strong>{invite.email}</strong>.
       </p>
+      {failure ? <Alert tone="error">{failure}</Alert> : null}
       <form onSubmit={onSubmit} noValidate>
         <TextField
           ref={passwordRef}

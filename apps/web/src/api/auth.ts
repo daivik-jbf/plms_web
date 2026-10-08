@@ -17,6 +17,8 @@ export async function login(email: string, password: string): Promise<User> {
   return result.user;
 }
 
+const fetchMe = (): Promise<User> => api<User>('/api/auth/me');
+
 export async function restoreSession(): Promise<User | null> {
   if (!(await refreshSession())) return null;
   return fetchMe();
@@ -29,8 +31,6 @@ export async function logout(): Promise<void> {
     setAccessToken(null);
   }
 }
-
-export const fetchMe = (): Promise<User> => api<User>('/api/auth/me');
 
 export const previewInvite = (token: string): Promise<{ name: string; email: string }> =>
   api('/api/invites/preview', { method: 'POST', body: { token }, auth: false });

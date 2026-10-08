@@ -1,13 +1,15 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchPasswordPolicy, resetPassword } from '../api/auth';
-import { ApiError } from '../api/client';
+import { ApiError, describeError } from '../api/client';
 import { Alert } from '../components/Alert';
 import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { AuthLayout } from './AuthLayout';
 
 const DEAD_LINK = 'This reset link is invalid or has expired.';
+
+const isDeadLink = (error: unknown): boolean => error instanceof ApiError && error.status === 400 && error.message === DEAD_LINK;
 
 export function ResetPasswordPage() {
   const token = useSearchParams()[0].get('token');
@@ -19,7 +21,15 @@ export function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
+  const [focusRequest, setFocusRequest] = useState<{ field: 'password' | 'confirm' } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Focus moves only after the error text has rendered, so screen readers announce the field together
+  // with its new description.
+  useEffect(() => {
+    if (focusRequest) (focusRequest.field === 'password' ? passwordRef : confirmRef).current?.focus();
+  }, [focusRequest]);
 
   useEffect(() => {
     fetchPasswordPolicy().then((policy) => setMinLength(policy.minLength)).catch(() => undefined);
@@ -32,8 +42,9 @@ export function ResetPasswordPage() {
       confirm: password === confirm ? undefined : 'The passwords do not match.',
     };
     setErrors(next);
+    setFailure(null);
     if (next.password || next.confirm) {
-      (next.password ? passwordRef : confirmRef).current?.focus();
+      setFocusRequest({ field: next.password ? 'password' : 'confirm' });
       return;
     }
     if (!token) return;
@@ -44,9 +55,12 @@ export function ResetPasswordPage() {
     } catch (error) {
       if (error instanceof ApiError && error.fieldErrors.newPassword) {
         setErrors({ password: error.fieldErrors.newPassword.join(' ') });
-        passwordRef.current?.focus();
+        setFocusRequest({ field: 'password' });
+      } else if (isDeadLink(error)) {
+        setLinkError(DEAD_LINK);
       } else {
-        setLinkError(error instanceof ApiError ? error.message : DEAD_LINK);
+        // Rate limits, server errors and network failures keep the form and what was typed.
+        setFailure(describeError(error));
       }
     } finally {
       setBusy(false);
@@ -66,6 +80,7 @@ export function ResetPasswordPage() {
 
   return (
     <AuthLayout title="Choose a new password">
+      {failure ? <Alert tone="error">{failure}</Alert> : null}
       <form onSubmit={onSubmit} noValidate>
         <TextField
           ref={passwordRef}

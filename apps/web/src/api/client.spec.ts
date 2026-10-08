@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../test/fetch-mock';
-import { api, ApiError, setAccessToken, setSessionLostHandler } from './client';
+import { api, ApiError, refreshSession, setAccessToken, setSessionLostHandler } from './client';
 
 describe('api client', () => {
   beforeEach(() => {
@@ -53,6 +53,53 @@ describe('api client', () => {
     });
     await Promise.all([api('/api/a'), api('/api/b'), api('/api/c')]);
     expect(refreshCalls).toBe(1);
+  });
+
+  it('serialises the refresh across tabs with a Web Lock and still shares it within the tab', async () => {
+    setAccessToken('old');
+    const request = vi.fn((name: string, callback: () => Promise<boolean>) => {
+      expect(name).toBe('jbf-refresh');
+      return callback();
+    });
+    vi.stubGlobal('navigator', { ...navigator, locks: { request } });
+    let refreshCalls = 0;
+    mockFetch(async (url, init) => {
+      if (url === '/api/auth/refresh') {
+        refreshCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return { body: { accessToken: 'new' } };
+      }
+      return (init.headers as Record<string, string>).Authorization === 'Bearer new'
+        ? { body: { ok: true } }
+        : { status: 401, body: {} };
+    });
+    await expect(Promise.all([api('/api/a'), api('/api/b')])).resolves.toEqual([{ ok: true }, { ok: true }]);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(refreshCalls).toBe(1);
+  });
+
+  it('does not send the refresh until the cross-tab lock is granted', async () => {
+    setAccessToken('old');
+    let grant: () => void = () => undefined;
+    const granted = new Promise<void>((resolve) => {
+      grant = resolve;
+    });
+    const request = vi.fn(async (_name: string, callback: () => Promise<boolean>) => {
+      await granted;
+      return callback();
+    });
+    vi.stubGlobal('navigator', { ...navigator, locks: { request } });
+    const calls: string[] = [];
+    mockFetch((url) => {
+      calls.push(url);
+      return url === '/api/auth/refresh' ? { body: { accessToken: 'new' } } : { body: {} };
+    });
+    const pending = refreshSession();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(calls).toEqual([]);
+    grant();
+    await expect(pending).resolves.toBe(true);
+    expect(calls).toEqual(['/api/auth/refresh']);
   });
 
   it('signals session loss and throws when the refresh fails', async () => {
