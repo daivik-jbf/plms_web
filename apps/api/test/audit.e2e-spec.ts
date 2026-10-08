@@ -65,6 +65,21 @@ describe('GET /api/audit', () => {
       expect(pages).toBe(3);
       expect(seen).toEqual(expectedOrder);
       expect(new Set(seen).size).toBe(7);
+
+      // One row per page forces every page boundary, including those inside tied timestamps, to rely on the id tie-break.
+      const singles: string[] = [];
+      let singleCursor: string | undefined;
+      let singlePages = 0;
+      do {
+        const res = await get(`?actorId=${actorId}&limit=1${singleCursor ? `&cursor=${singleCursor}` : ''}`).expect(200);
+        singles.push(...ids(res.body));
+        singleCursor = res.body.nextCursor ?? undefined;
+        singlePages += 1;
+      } while (singleCursor);
+
+      expect(singlePages).toBe(7);
+      expect(singles).toEqual(expectedOrder);
+      expect(new Set(singles).size).toBe(7);
     });
 
     it('is not disturbed by newer rows arriving between pages', async () => {
@@ -78,6 +93,14 @@ describe('GET /api/audit', () => {
       await seedAuditAt(db, '2026-02-01 10:00:09+00', { actorId });
       const secondAfter = await get(`?actorId=${actorId}&limit=2&cursor=${first.body.nextCursor}`).expect(200);
       expect(ids(secondAfter.body)).toEqual(ids(secondBefore.body));
+    });
+
+    it('rejects well-formed but impossible cursor timestamps with a 400, not a 500', async () => {
+      for (const t of ['2026-13-45 99:99:99+00', '2026-02-30 00:00:00+00', '2026-10-08 24:00:00+00', '2026-10-08 10:42:60+00']) {
+        const cursor = Buffer.from(JSON.stringify({ t, id: randomUUID() })).toString('base64url');
+        const res = await get(`?cursor=${cursor}`).expect(400);
+        expect(res.body.fieldErrors.cursor).toBeDefined();
+      }
     });
 
     it('defaults to 50 per page and rejects out-of-range limits', async () => {

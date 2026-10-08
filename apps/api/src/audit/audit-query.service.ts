@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, gte, ilike, like, lte, not, or, type SQL, sql } from 'drizzle-orm';
+import { and, count, eq, gte, ilike, like, lte, not, or, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { DB, type Database } from '../db/db.module';
 import { type AuditChanges, auditLog, type Role, users } from '../db/schema';
-import { type AuditCursor, decodeCursor, encodeCursor } from './audit-cursor';
+import { isInvalidInputValue } from '../db/errors';
+import { type AuditCursor, decodeCursor, encodeCursor, invalidCursor } from './audit-cursor';
 import {
   type AuditCategory,
   type AuditTone,
@@ -129,7 +130,17 @@ export class AuditQueryService {
     }
   }
 
-  private fetch(filters: AuditFilters, limit: number, cursor?: AuditCursor): Promise<Row[]> {
+  private async fetch(filters: AuditFilters, limit: number, cursor?: AuditCursor): Promise<Row[]> {
+    try {
+      return await this.query(filters, limit, cursor);
+    } catch (error) {
+      // Belt and braces: the cursor is validated on decode, but never let Postgres reject it as a 500.
+      if (cursor && isInvalidInputValue(error)) throw invalidCursor();
+      throw error;
+    }
+  }
+
+  private query(filters: AuditFilters, limit: number, cursor?: AuditCursor): Promise<Row[]> {
     return this.db
       .select({
         entry: auditLog,
@@ -146,7 +157,8 @@ export class AuditQueryService {
           cursor ? sql`(${auditLog.occurredAt}, ${auditLog.id}) < (${cursor.t}::timestamptz, ${cursor.id}::uuid)` : undefined,
         ),
       )
-      .orderBy(desc(auditLog.occurredAt), desc(auditLog.id))
+      // Must match audit_log_paging_idx (desc nulls last) for Postgres to use it.
+      .orderBy(sql`${auditLog.occurredAt} desc nulls last`, sql`${auditLog.id} desc nulls last`)
       .limit(limit);
   }
 
