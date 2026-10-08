@@ -1,6 +1,6 @@
 # JBF LMS API: authentication, invites and users (milestone 1)
 
-This is the hand-written contract for everything the API exposes in milestone 1. It was written from the code and its end-to-end tests. A generated OpenAPI document is planned for milestone 6 (see `PROGRESS.md`).
+This is the hand-written contract for everything the API exposes in milestone 1. It was written from the code and its end-to-end tests. A generated OpenAPI document is planned for milestone 6 (see `PROGRESS.md`). The audit log endpoints added in milestone 2 are documented in `docs/api/audit.md`; the web screens added in milestone 2 (Staff, Audit log, My account) call only endpoints described here or there, so nothing in this contract changed.
 
 - Base path: every route starts with `/api` (for example `POST /api/auth/login`).
 - Format: JSON requests and responses (`Content-Type: application/json`). Timestamps are ISO 8601 strings in UTC.

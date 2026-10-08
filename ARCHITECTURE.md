@@ -13,7 +13,7 @@ An npm workspaces monorepo. `apps/web` is a React + TypeScript single-page app b
 | `config/` | Environment loading and validation (`load-env.ts`, `env.ts`, `config.module.ts`) |
 | `common/` | Request context and request IDs, structured logger, the one exception filter that shapes every error body, Zod validation pipe, shared field schemas |
 | `db/` | Drizzle schema, database module and connection pool, migration runner, database error helpers |
-| `audit/` | `AuditService`: writes audit entries inside the caller's transaction; action names; the table is append-only (database triggers) |
+| `audit/` | Write side: `AuditService` writes audit entries inside the caller's transaction; `audit.actions.ts` lists the known action names; the table is append-only (database triggers). Read side (Admin only, milestone 2): `audit.controller.ts` (list, page-opened marker, CSV export), `audit-query.service.ts` (filters, keyset paging, names joined at read time), `audit-cursor.ts` (opaque, validated cursors), `audit-presentation.ts` (labels, tones, categories and summaries), `audit-export.service.ts` and `csv.ts` (streamed, formula-safe CSV), `audit.schemas.ts` (query validation) |
 | `mail/` | `Mailer` interface with console and SMTP implementations, email templates |
 | `auth/` | Password policy and hashing, access tokens, opaque tokens, sessions (rotating refresh tokens), login with lockout, password reset and change, the global auth guard and roles guard, `auth.controller.ts` |
 | `invites/` | Admin invites, preview and accept (no self-signup) |
@@ -30,14 +30,17 @@ Tests: unit tests sit beside their source as `*.spec.ts`; database and HTTP test
 | Folder | Responsibility |
 | --- | --- |
 | `styles/` | Design tokens (`tokens.css`) and base styles |
-| `components/` | Small shared components: `Button`, `TextField`, `Alert` |
-| `api/` | `client.ts` (fetch wrapper, token refresh, error shape) and `auth.ts` (typed calls) |
-| `auth/` | `AuthContext` (session state) and `ProtectedRoute` |
-| `pages/` | Sign in, accept invite, forgot password, reset password, home, not found |
-| `test/` | Test setup and a fetch mock |
+| `components/` | Shared components: `Button`, `TextField`, `Select`, `Alert`, `Badge`, `Tabs`, `Table`, `EmptyState`, `Skeleton`, `Dialog` (native `<dialog>`, modal or drawer) and `ConfirmDialog`; the app shell (`AppShell` with sidebar and top bar, `NavLinks`, `nav-items.ts`) and `AdminRoute` |
+| `api/` | `client.ts` (fetch wrapper, token refresh, error shape, file download) and typed calls: `auth.ts`, `staff.ts`, `audit.ts` |
+| `auth/` | `AuthContext` (session state and the sign-out notice) and `ProtectedRoute` |
+| `lib/` | Date and value formatting, file download helper |
+| `pages/` | Public: sign in, accept invite, forgot password, reset password, not found. Inside the shell: `DashboardPage`, `staff/` (Staff page), `audit/` (Audit log page, filters, table, details drawer), `account/` (My account) |
+| `test/` | Test setup (dialog stand-ins for jsdom), a fetch mock and session helpers |
+
+Routes: `/login`, `/accept-invite`, `/forgot-password`, `/reset-password` are public. Everything else is inside `ProtectedRoute` and the `AppShell`: `/` and `/account` for everyone, `/staff` and `/audit` behind `AdminRoute` (Staff are redirected to `/`; the server enforces the rule regardless).
 
 ## Related documents
 
-- API contract: `docs/api/auth.md`
+- API contracts: `docs/api/auth.md`, `docs/api/audit.md`
 - Decisions and their reasons: `DECISIONS.md`
 - Status: `PROGRESS.md`, `TASKS.md`
