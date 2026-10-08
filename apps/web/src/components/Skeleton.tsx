@@ -6,6 +6,8 @@ export function Skeleton({ rows = 4 }: { rows?: number }) {
       {Array.from({ length: rows }, (_, index) => (
         <span key={index} className={styles.bar} />
       ))}
+      {/* Some screen readers do not announce a status region's aria-label, so the word is also there as text. */}
+      <span className={styles.srOnly}>Loading</span>
     </div>
   );
 }

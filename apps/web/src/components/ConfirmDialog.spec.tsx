@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -31,6 +31,18 @@ describe('ConfirmDialog', () => {
     const confirm = screen.getByRole('button', { name: 'Deactivate' });
     expect(confirm).toBeDisabled();
     await userEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('focuses Cancel when it opens, so the safe choice is the default', () => {
+    renderDialog();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+  });
+
+  it('treats Esc and other native closes (the close event) as Cancel', () => {
+    const { onConfirm, onCancel } = renderDialog();
+    fireEvent(screen.getByRole('dialog'), new Event('close'));
+    expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });
 

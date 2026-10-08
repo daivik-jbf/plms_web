@@ -370,6 +370,35 @@ describe('StaffPage', () => {
       expect(within(dialog).getByLabelText('Email')).toHaveValue('not-an-email');
     });
 
+    it('focuses Email again when the server rejects the same field the client check flagged a moment ago', async () => {
+      startServer({ 'POST /api/invites': { status: 400, body: { message: 'Validation failed', fieldErrors: { email: ['Enter a valid email address.'] } } } });
+      renderStaff();
+      const dialog = await openDialog();
+      await userEvent.type(within(dialog).getByLabelText('Name'), 'Fiona Quinn');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Send invite' }));
+      const email = within(dialog).getByLabelText('Email');
+      expect(email).toHaveFocus();
+      await userEvent.type(email, 'not-an-email');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Send invite' }));
+      expect(await within(dialog).findByText('Enter a valid email address.')).toBeInTheDocument();
+      expect(email).toHaveAccessibleDescription(/Enter a valid email address\./);
+      await waitFor(() => expect(email).toHaveFocus());
+    });
+
+    it('shows a role-only server error under Role and focuses Role', async () => {
+      startServer({ 'POST /api/invites': { status: 400, body: { message: 'Validation failed', fieldErrors: { role: ['Choose Staff or Admin.'] } } } });
+      renderStaff();
+      const dialog = await openDialog();
+      await userEvent.type(within(dialog).getByLabelText('Name'), 'Fiona Quinn');
+      await userEvent.type(within(dialog).getByLabelText('Email'), 'fiona@jbf.org');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Send invite' }));
+      const role = within(dialog).getByLabelText('Role');
+      await waitFor(() => expect(role).toHaveAccessibleDescription('Choose Staff or Admin.'));
+      expect(role).toHaveAttribute('aria-invalid', 'true');
+      expect(role).toHaveFocus();
+      expect(within(dialog).getByLabelText('Email')).not.toHaveAttribute('aria-invalid');
+    });
+
     it('shows a conflict in the dialog', async () => {
       startServer({ 'POST /api/invites': { status: 409, body: { message: 'A user with this email already exists.' } } });
       renderStaff();
@@ -401,6 +430,18 @@ describe('StaffPage', () => {
       mockSession(ADMIN, () => new Promise<MockResponse>(() => undefined));
       renderStaff();
       expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
+    });
+
+    it('confirms a successful action even when the reload afterwards fails, and offers Retry', async () => {
+      let peopleLoads = 0;
+      startServer({
+        'GET /api/users': () => (peopleLoads++ === 0 ? { body: peopleFixture } : { status: 500, body: {} }),
+      });
+      renderStaff();
+      await userEvent.click(await screen.findByRole('button', { name: 'Reactivate Eli Brooks' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('Eli Brooks was reactivated.');
+      expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     });
 
     it('shows an error with Retry when the lists cannot be loaded', async () => {

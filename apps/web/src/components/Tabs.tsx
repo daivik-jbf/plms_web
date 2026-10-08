@@ -20,6 +20,8 @@ export function Tabs({ label, tabs, value, onChange, children }: TabsProps) {
   const buttons = useRef<Record<string, HTMLButtonElement | null>>({});
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // Alt/Ctrl/Cmd + arrow are browser and system shortcuts (Back, Forward, word jumps); leave them alone.
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     const index = tabs.findIndex((tab) => tab.id === value);
     let next: number;
     if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
@@ -55,7 +57,7 @@ export function Tabs({ label, tabs, value, onChange, children }: TabsProps) {
           </button>
         ))}
       </div>
-      <div role="tabpanel" id={`${base}-panel`} aria-labelledby={`${base}-tab-${value}`} className={styles.panel}>
+      <div role="tabpanel" tabIndex={0} id={`${base}-panel`} aria-labelledby={`${base}-tab-${value}`} className={styles.panel}>
         {children}
       </div>
     </div>

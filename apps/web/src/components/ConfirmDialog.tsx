@@ -34,7 +34,8 @@ export function ConfirmDialog({
       {error ? <Alert tone="error">{error}</Alert> : null}
       <p>{children}</p>
       <div className={styles.actions}>
-        <Button variant="secondary" onClick={onCancel} disabled={busy}>
+        {/* The safe choice has focus when the dialog opens, so a stray Enter never confirms. */}
+        <Button variant="secondary" onClick={onCancel} disabled={busy} data-autofocus>
           {cancelLabel}
         </Button>
         <Button variant={tone === 'danger' ? 'danger' : 'primary'} onClick={onConfirm} busy={busy}>

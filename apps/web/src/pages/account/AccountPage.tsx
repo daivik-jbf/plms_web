@@ -15,6 +15,7 @@ export function AccountPage() {
   const currentRef = useRef<HTMLInputElement>(null);
   const nextRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
+  // Only a hint for the form until the policy loads (or if it cannot): the server enforces the real minimum.
   const [minLength, setMinLength] = useState(10);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -56,12 +57,12 @@ export function AccountPage() {
       await changePassword(current, next);
       await signOut('Your password was changed. Sign in again with the new one.');
     } catch (error) {
-      if (error instanceof ApiError && error.fieldErrors.currentPassword) {
-        setErrors({ current: error.fieldErrors.currentPassword.join(' ') });
-        setFocusRequest({ field: 'current' });
-      } else if (error instanceof ApiError && error.fieldErrors.newPassword) {
-        setErrors({ next: error.fieldErrors.newPassword.join(' ') });
-        setFocusRequest({ field: 'next' });
+      const fieldErrors: Partial<Record<string, string[]>> = error instanceof ApiError ? error.fieldErrors : {};
+      const { currentPassword, newPassword } = fieldErrors;
+      if (currentPassword || newPassword) {
+        // Show every complaint under its own field, and focus the first one.
+        setErrors({ current: currentPassword?.join(' '), next: newPassword?.join(' ') });
+        setFocusRequest({ field: currentPassword ? 'current' : 'next' });
       } else {
         setFailure(describeError(error));
       }

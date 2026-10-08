@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -30,7 +30,30 @@ describe('Tabs', () => {
     expect(people).toHaveAttribute('aria-selected', 'true');
     expect(people).toHaveAttribute('tabindex', '0');
     expect(screen.getByRole('tab', { name: 'Invites (2)' })).toHaveAttribute('tabindex', '-1');
-    expect(screen.getByRole('tabpanel', { name: 'People (3)' })).toHaveTextContent('Panel for people');
+    const panel = screen.getByRole('tabpanel', { name: 'People (3)' });
+    expect(panel).toHaveTextContent('Panel for people');
+    for (const tab of screen.getAllByRole('tab')) expect(tab).toHaveAttribute('aria-controls', panel.id);
+    expect(panel.id).not.toBe('');
+  });
+
+  it('makes the panel reachable with Tab', async () => {
+    render(<Harness />);
+    screen.getByRole('tab', { name: 'People (3)' }).focus();
+    await userEvent.tab();
+    expect(screen.getByRole('tabpanel')).toHaveFocus();
+  });
+
+  it.each([{ altKey: true }, { ctrlKey: true }, { metaKey: true }])('leaves arrow, Home and End keys alone with %j (browser shortcuts)', (modifier) => {
+    render(<Harness />);
+    const people = screen.getByRole('tab', { name: 'People (3)' });
+    people.focus();
+    for (const key of ['ArrowRight', 'ArrowLeft', 'Home', 'End']) {
+      const notPrevented = fireEvent.keyDown(people, { key, ...modifier });
+      expect(notPrevented).toBe(true);
+    }
+    expect(people).toHaveFocus();
+    expect(people).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Panel for people');
   });
 
   it('switches on click', async () => {

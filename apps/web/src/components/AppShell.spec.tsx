@@ -8,8 +8,8 @@ import { ADMIN, mockSession, renderWithSession, STAFF } from '../test/session';
 import { AppShell } from './AppShell';
 
 function renderShell(user: User) {
-  mockSession(user, (url) => (url === '/api/auth/logout' ? { status: 204 } : { status: 404, body: {} }));
-  return renderWithSession(
+  const fetchMock = mockSession(user, (url) => (url === '/api/auth/logout' ? { status: 204 } : { status: 404, body: {} }));
+  const view = renderWithSession(
     <Routes>
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
@@ -19,6 +19,7 @@ function renderShell(user: User) {
       <Route path="/login" element={<p>Login page</p>} />
     </Routes>,
   );
+  return { ...view, fetchMock };
 }
 
 describe('AppShell', () => {
@@ -42,9 +43,12 @@ describe('AppShell', () => {
   });
 
   it('signs out and returns to the sign-in page', async () => {
-    renderShell(ADMIN);
+    const { fetchMock } = renderShell(ADMIN);
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
     expect(await screen.findByText('Login page')).toBeInTheDocument();
+    const logout = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/auth/logout');
+    expect(logout).toHaveLength(1);
+    expect(logout[0]![1]).toMatchObject({ method: 'POST' });
   });
 
   it('opens the navigation as a drawer from the Menu button and closes it after choosing a page', async () => {

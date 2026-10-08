@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Dialog } from './Dialog';
+import styles from './Dialog.module.css';
 
 function Harness({
   onClose = () => undefined,
@@ -88,10 +89,22 @@ describe('Dialog', () => {
     expect(screen.getByText('Inside the dialog')).toBeInTheDocument();
   });
 
-  it('can be a side drawer', async () => {
-    render(<Harness side="right" />);
+  it.each([
+    ['right', 'left'],
+    ['left', 'right'],
+  ] as const)('can be a %s side drawer', async (side, other) => {
+    render(<Harness side={side} />);
     await userEvent.click(screen.getByRole('button', { name: 'Open' }));
-    expect(screen.getByRole('dialog', { name: 'Edit thing' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Edit thing' });
+    expect(dialog).toHaveClass(styles.dialog!, styles[side]!);
+    expect(dialog).not.toHaveClass(styles[other]!);
+  });
+
+  it.each([undefined, 'center'] as const)('is a centered dialog with side=%s', async (side) => {
+    render(<Harness side={side} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit thing' });
+    expect(dialog.className).toBe(styles.dialog);
   });
 
   describe('while blocked', () => {

@@ -14,6 +14,28 @@ describe('Select', () => {
     expect(select).toHaveAccessibleDescription('Admins can manage people Choose a role.');
   });
 
+  it('describes the control with only the hint when there is no error', () => {
+    render(
+      <Select label="Role" hint="Admins can manage people">
+        <option value="staff">Staff</option>
+      </Select>,
+    );
+    const select = screen.getByLabelText('Role');
+    expect(select).toHaveAccessibleDescription('Admins can manage people');
+    expect(select).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('describes the control with only the error when there is no hint', () => {
+    render(
+      <Select label="Role" error="Choose a role.">
+        <option value="staff">Staff</option>
+      </Select>,
+    );
+    const select = screen.getByLabelText('Role');
+    expect(select).toHaveAccessibleDescription('Choose a role.');
+    expect(select).toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('is not invalid without an error', () => {
     render(
       <Select label="Role">

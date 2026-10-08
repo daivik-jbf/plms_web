@@ -34,7 +34,9 @@
 .panel {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  /* The panel is as tall as the dialog and no taller, so a long body scrolls inside .body while the header stays. */
+  height: 100%;
+  max-height: inherit;
 }
 
 .header {
@@ -69,6 +71,8 @@
 
 .body {
   flex: 1;
+  /* Lets the flex item shrink below its content height so overflow-y can take effect. */
+  min-height: 0;
   padding: var(--space-6);
   overflow-y: auto;
 }

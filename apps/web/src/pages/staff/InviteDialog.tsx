@@ -32,16 +32,20 @@ function InviteForm({
 }: Pick<InviteDialogProps, 'onClose' | 'onInvited'> & { busy: boolean; setBusy: (busy: boolean) => void }) {
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
+  const roleRef = useRef<HTMLSelectElement>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('staff');
-  const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; email?: string; role?: string }>({});
   const [failure, setFailure] = useState<string | null>(null);
-  const [focusRequest, setFocusRequest] = useState<'name' | 'email' | null>(null);
+  // A new object every time, so the effect runs again even when the same field is invalid twice in a row.
+  const [focusRequest, setFocusRequest] = useState<{ field: 'name' | 'email' | 'role' } | null>(null);
 
   // Focus moves only after the error text has rendered so it is announced together with the field.
   useEffect(() => {
-    if (focusRequest) (focusRequest === 'name' ? nameRef : emailRef).current?.focus();
+    if (!focusRequest) return;
+    const refs = { name: nameRef, email: emailRef, role: roleRef };
+    refs[focusRequest.field].current?.focus();
   }, [focusRequest]);
 
   async function onSubmit(event: FormEvent) {
@@ -53,7 +57,7 @@ function InviteForm({
     setErrors(next);
     setFailure(null);
     if (next.name || next.email) {
-      setFocusRequest(next.name ? 'name' : 'email');
+      setFocusRequest({ field: next.name ? 'name' : 'email' });
       return;
     }
     setBusy(true);
@@ -64,9 +68,13 @@ function InviteForm({
       if (error instanceof ApiError && error.status === 502) {
         onInvited(email.trim().toLowerCase(), error.message);
       } else if (error instanceof ApiError && Object.keys(error.fieldErrors).length > 0) {
-        setErrors({ name: error.fieldErrors.name?.join(' '), email: error.fieldErrors.email?.join(' ') });
-        setFailure(error.fieldErrors.role?.join(' ') ?? null);
-        setFocusRequest(error.fieldErrors.name ? 'name' : 'email');
+        const { name: nameError, email: emailError, role: roleError } = error.fieldErrors;
+        if (nameError || emailError || roleError) {
+          setErrors({ name: nameError?.join(' '), email: emailError?.join(' '), role: roleError?.join(' ') });
+          setFocusRequest({ field: nameError ? 'name' : emailError ? 'email' : 'role' });
+        } else {
+          setFailure(describeError(error));
+        }
       } else {
         setFailure(describeError(error));
       }
@@ -89,7 +97,7 @@ function InviteForm({
         hint="The invite link is sent to this address and works once, for 7 days."
         error={errors.email}
       />
-      <Select label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+      <Select ref={roleRef} label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)} error={errors.role}>
         <option value="staff">Staff</option>
         <option value="admin">Admin</option>
       </Select>

@@ -59,7 +59,8 @@ export function Dialog({ open, onClose, title, side = 'center', blocked = false,
   return (
     <dialog
       ref={ref}
-      className={`${styles.dialog} ${styles[side]}`}
+      // The centered dialog needs no class of its own (there is no .center rule), so only drawers add one.
+      className={[styles.dialog, side === 'center' ? undefined : styles[side]].filter(Boolean).join(' ')}
       aria-labelledby={titleId}
       onClick={onBackdropClick}
       {...LIGHT_DISMISS}
