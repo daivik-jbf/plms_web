@@ -1,0 +1,34 @@
+:root {
+  --color-bg: #ffffff;
+  --color-surface: #f4f8fa;
+  --color-border: #c9d8df;
+  --color-text: #0f2a33;
+  --color-text-muted: #4a6572;
+  --color-primary: #0e7490;
+  --color-primary-hover: #0b5f77;
+  --color-primary-contrast: #ffffff;
+  --color-accent: #06b6d4;
+  --color-danger: #b42318;
+  --color-danger-surface: #fef3f2;
+  --color-success: #15803d;
+  --color-success-surface: #f0fdf4;
+  --color-info-surface: #ecfeff;
+
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.75rem;
+  --leading: 1.5;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  --radius: 6px;
+  --focus-outline: 2px solid var(--color-primary);
+}
