@@ -4,11 +4,23 @@ import type { Request, Response } from 'express';
 import { ZodPipe } from '../common/zod.pipe';
 import { ENV } from '../config/config.module';
 import type { Env } from '../config/env';
-import { type LoginInput, loginSchema, type SessionTokenInput, sessionTokenSchema } from './auth.schemas';
+import {
+  type ChangePasswordInput,
+  changePasswordSchema,
+  type ForgotPasswordInput,
+  forgotPasswordSchema,
+  type LoginInput,
+  loginSchema,
+  type ResetPasswordInput,
+  resetPasswordSchema,
+  type SessionTokenInput,
+  sessionTokenSchema,
+} from './auth.schemas';
 import { type LoginResult, AuthService } from './auth.service';
 import type { AuthUser } from './auth.types';
 import { CurrentUser } from './current-user.decorator';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from './password-policy';
+import { PasswordResetService } from './password-reset.service';
 import { Public } from './public.decorator';
 import { REFRESH_TTL_MS } from './session.service';
 
@@ -19,6 +31,7 @@ const authThrottle = { default: { limit: 20, ttl: 60_000 } };
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly resets: PasswordResetService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -71,6 +84,32 @@ export class AuthController {
   async logoutAll(@CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response): Promise<void> {
     await this.auth.logoutAll(user);
     this.clearCookie(res, 'web');
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('forgot-password')
+  @HttpCode(202)
+  async forgotPassword(@Body(new ZodPipe(forgotPasswordSchema)) body: ForgotPasswordInput): Promise<{ message: string }> {
+    await this.resets.request(body.email);
+    return { message: 'If an account exists for that email, a reset link has been sent.' };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('reset-password')
+  @HttpCode(204)
+  async resetPassword(@Body(new ZodPipe(resetPasswordSchema)) body: ResetPasswordInput): Promise<void> {
+    await this.resets.reset(body.token, body.newPassword);
+  }
+
+  @Post('change-password')
+  @HttpCode(204)
+  async changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodPipe(changePasswordSchema)) body: ChangePasswordInput,
+  ): Promise<void> {
+    await this.resets.change(user, body.currentPassword, body.newPassword);
   }
 
   @Get('me')

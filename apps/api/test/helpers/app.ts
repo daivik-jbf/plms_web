@@ -15,7 +15,9 @@ export async function createTestApp() {
     .useValue(mailer)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
-  configureApp(app, parseEnv(process.env), new AppLogger('silent'));
+  const logger = new AppLogger('silent');
+  app.useLogger(logger);
+  configureApp(app, parseEnv(process.env), logger);
   await app.init();
   return { app, db: app.get<Database>(DB), mailer };
 }
