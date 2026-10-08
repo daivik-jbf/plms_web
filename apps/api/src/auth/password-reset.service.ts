@@ -12,7 +12,7 @@ import { generateOpaqueToken, hashOpaqueToken } from './opaque-token';
 import { PasswordService } from './password.service';
 import { SessionService } from './session.service';
 
-export const RESET_TTL_MS = 60 * 60 * 1000;
+const RESET_TTL_MS = 60 * 60 * 1000;
 const INVALID_LINK = 'This reset link is invalid or has expired.';
 
 @Injectable()

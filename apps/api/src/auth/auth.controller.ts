@@ -24,7 +24,7 @@ import { PasswordResetService } from './password-reset.service';
 import { Public } from './public.decorator';
 import { REFRESH_TTL_MS } from './session.service';
 
-export const REFRESH_COOKIE = 'jbf_rt';
+const REFRESH_COOKIE = 'jbf_rt';
 const authThrottle = { default: { limit: 20, ttl: 60_000 } };
 
 @Controller('auth')

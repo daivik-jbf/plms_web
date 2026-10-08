@@ -19,7 +19,7 @@ import { type Invite, invites, type Role, users } from '../db/schema';
 import { MAILER, type Mailer } from '../mail/mailer';
 import { inviteEmail } from '../mail/templates';
 
-export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const INVALID_LINK = 'This invite link is invalid or has expired.';
 
 export interface InviteView {
@@ -33,7 +33,7 @@ export interface InviteView {
   invitedBy: string | null;
 }
 
-export const toInviteView = (invite: Invite): InviteView => ({
+const toInviteView = (invite: Invite): InviteView => ({
   id: invite.id,
   email: invite.email,
   name: invite.name,

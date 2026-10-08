@@ -18,7 +18,7 @@ export interface LoginResult {
   refreshToken: string;
 }
 
-export const toAuthUser = (user: Pick<User, 'id' | 'email' | 'name' | 'role'>): AuthUser => ({
+const toAuthUser = (user: Pick<User, 'id' | 'email' | 'name' | 'role'>): AuthUser => ({
   id: user.id,
   email: user.email,
   name: user.name,
