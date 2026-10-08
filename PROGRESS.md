@@ -16,7 +16,7 @@ Last updated: 2026-10-08
 - API contract for the mobile developer in `docs/api/auth.md`.
 - Tests: 118 API tests and 19 web tests, all passing.
 
-## Done: milestone 2 (Staff and Audit log screens)
+## Built, awaiting approval: milestone 2 (Staff and Audit log screens)
 
 - Audit read API (Admin only): `GET /api/audit` with filters (person, involving, category, action, dates, text search, "Changes only"), newest-first keyset paging with microsecond-exact cursors, and server-generated labels, tones, categories and plain-English summaries for all 17 known actions; unknown actions still display.
 - `GET /api/audit/export.csv`: streamed UTF-8 CSV with a BOM, spreadsheet-formula neutralizing, a database-clock snapshot so the cap, the recorded row count and the rows are one set, a cap (`AUDIT_EXPORT_MAX_ROWS`, default 50,000, otherwise 413) and a 10-per-minute limit.
@@ -29,10 +29,11 @@ Last updated: 2026-10-08
 - Shared components: Dialog (native `<dialog>`, modal and drawer), ConfirmDialog, Tabs, Table, Badge, Select, EmptyState, Skeleton.
 - API contract for the audit log in `docs/api/audit.md`.
 - Tests at the end of the build (before the final fix wave): 219 API tests and 146 web tests, all passing.
+- Final fix wave (after the whole-branch review): audit filters and cursor hardened (years 0001-9999, microsecond-exact date bounds, uppercase ids, a fixed UTC cursor text), export backpressure and client-disconnect handling, keyboard focus kept on the Audit log page, plain words for a bad address, and dialog, tabs, Staff and My account polish. Tests after the final fix wave: 243 API tests and 184 web tests, all passing.
 
 ## In progress
 
-Nothing in the build. The whole-branch review and a final fix wave for the minor review findings come before the branch is merged.
+Nothing in the build. The whole-branch review and the final fix wave are complete; milestone 2 is waiting for approval before the branch is merged.
 
 ## Next: milestone 3
 
@@ -51,8 +52,10 @@ Media upload and playback, end to end, on Videos (storage provider, upload limit
 9. The manual browser check of the screens (responsive layout, focus ring, the Staff, Audit log and My account pages, dialogs and the drawer in Chrome and Safari) has not been done yet.
 10. Milestone 7 (deployment): production deployments MUST set `NODE_ENV=production`. The `Secure` flag on the refresh cookie and the ban on the console mailer both depend on it.
 11. Login lockout reveals account existence: a locked real account answers 429 while an unknown email keeps answering 401, so existence can be inferred after 5 wrong guesses. Accepted trade-off; throttled per IP.
-12. Minor review notes from milestone 2 are tracked in the final fix wave and recorded here when it completes.
+12. Minor review notes from milestone 2: the final fix wave is complete. The review notes that were deliberately parked (not fixed) are listed in the milestone 2 review records.
 13. The parked milestone 1 review minors that remain open (none block use; they were noted during the milestone 1 review and not fixed in the milestone 1 fix commits).
 14. The audit `q` search is a sequential scan. Fine at this size; add trigram indexes if audit volume grows.
 15. Audit archiving is not designed. The log only grows; decide on retention and archiving before it becomes large.
 16. Names in the audit log are joined at read time from the users table. This breaks (names disappear, labels remain) if users are ever hard-deleted; today users are only deactivated.
+17. CI (`.github/workflows/ci.yml`) has not run remotely yet for milestone 2 (the branch has not been pushed). Lint, build and tests pass locally.
+18. On narrow screens tables switch to a stacked layout with CSS. Safari with VoiceOver may then stop treating them as tables (lost row and column semantics); consider explicit ARIA table roles later.

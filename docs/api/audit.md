@@ -24,12 +24,12 @@ All parameters are optional. Unknown parameters are ignored. A value that fails 
 | --- | --- | --- | --- |
 | `limit` | integer 1 to 100 | `50` | Page size. `0`, `101` and non-numbers give 400 `fieldErrors.limit` |
 | `cursor` | opaque string, at most 300 characters | none (first page) | Pass the `nextCursor` of the previous page. See "Paging" |
-| `actorId` | UUID | none | Only entries performed by this user |
-| `involving` | UUID | none | Entries performed by this user **or** done to this user (the target is a user with this id). Invite targets are not matched, even if the id is the same |
+| `actorId` | UUID (upper or lower case) | none | Only entries performed by this user |
+| `involving` | UUID (upper or lower case) | none | Entries performed by this user **or** done to this user (the target is a user with this id). Invite targets are not matched, even if the id is the same |
 | `category` | `accounts`, `content`, `files` or `playback` | none | Only entries in this category (see the table below) |
 | `action` | one of the 17 known actions listed below | none | Only entries with exactly this action. Any other value gives 400 `fieldErrors.action` |
-| `from` | ISO 8601 date-time with a `Z` or an offset, for example `2026-03-02T00:00:00.000Z` | none | Only entries at or after this instant (inclusive). A bare date such as `2026-03-02` is rejected |
-| `to` | same format as `from` | none | Only entries at or before this instant (inclusive) |
+| `from` | ISO 8601 date-time with a `Z` or an offset, for example `2026-03-02T00:00:00.000Z`; the year must be 0001 to 9999; up to microsecond precision is kept | none | Only entries at or after this instant (inclusive). A bare date such as `2026-03-02` is rejected, and so is year `0000` (400 `fieldErrors.from`) |
+| `to` | same format and year range as `from` | none | Only entries at or before this instant (inclusive) |
 | `q` | text, trimmed, at most 100 characters | none | Case-insensitive "contains" search over the actor label (the email or typed text), the target label, the action name, and the actor's and target's names. `%` and `_` are matched literally (they are not wildcards). An empty or all-space value is ignored |
 | `includePlayback` | the text `true` or `false` | `false` | `false` is the "Changes only" view: entries in the `playback` category (playback and download events) are hidden. `true` shows them. `category=playback` always shows them |
 
@@ -114,7 +114,7 @@ Example entry (a role change):
 - Order: newest first, by time and then by id (both descending), so entries with the same timestamp keep one fixed order.
 - It is keyset paging, not offset paging. The cursor holds the time (to the microsecond, exactly as the database stores it) and the id of the last entry on the page, and the next page is "everything strictly older than that". Because of this, new entries arriving while someone pages do not shift, repeat or skip entries: a page requested with the same cursor returns the same entries before and after new rows are added.
 - The cursor is opaque: pass back exactly what you were given, with the same filters. Do not build, parse or store cursors long term.
-- A cursor is invalid (400 with `fieldErrors.cursor: ["Invalid cursor."]`) if it is not valid base64url JSON, is missing `t` or `id`, if `id` is not a UUID, or if `t` is not a real date and time (impossible values such as `2026-02-30 00:00:00+00` or `24:00:00` are rejected). It is also invalid if it is longer than 300 characters.
+- An invalid cursor gives a 400 with `fieldErrors.cursor`. That happens if it is not valid base64url JSON, is missing `t` or `id`, if `id` is not a UUID, or if `t` is not a real date and time (impossible values such as `2026-02-30 00:00:00+00` or `24:00:00` are rejected); the message is then `Invalid cursor.`. A cursor longer than 300 characters is also rejected, with the validator's own length message under the same key.
 - Page through until `nextCursor` is `null`.
 
 ### How entries are presented
@@ -155,13 +155,14 @@ Records that the signed-in Admin opened the Audit log page. No request body. Res
 
 Downloads the entries as a CSV file. It accepts the same filter parameters as `GET /api/audit` (`actorId`, `involving`, `category`, `action`, `from`, `to`, `q`, `includePlayback`) with the same validation and defaults, so "Changes only" applies unless `includePlayback=true` or `category=playback`. It has no `limit` or `cursor`: everything that matches is exported, newest first. (`limit` and `cursor` are ignored if sent.)
 
-Rate limit: 10 exports per minute per client IP (stricter than the global 120 per minute).
+Rate limit: 10 exports per minute per client IP (stricter than the global 120 per minute). All rate limits are off when the API runs with `THROTTLE_ENABLED=false` (meant for tests and local work only).
 
 ### Response (200)
 
 - `Content-Type: text/csv; charset=utf-8`
 - `Content-Disposition: attachment; filename="audit-log-YYYY-MM-DD.csv"`, where the date is the day of the export in UTC.
 - The file is streamed in chunks of 1,000 rows, so memory stays flat for large exports.
+- The server waits when the client reads slowly (backpressure) and stops quietly if the client disconnects part-way; that is not treated as a failure.
 - If an unexpected error happens after streaming has started, the connection is closed without finishing the file, so a truncated download fails instead of looking complete. Validation and the row cap are checked before anything is sent.
 
 ### Format
@@ -169,7 +170,7 @@ Rate limit: 10 exports per minute per client IP (stricter than the global 120 pe
 - UTF-8 with a byte order mark (BOM, `EF BB BF`) at the start so Excel detects the encoding.
 - Rows end with CRLF (`\r\n`). A header row comes first; an export with no matches is the header row alone.
 - Cells containing a comma, a double quote, a CR or an LF are wrapped in double quotes, and double quotes inside are doubled (RFC 4180).
-- Formula neutralizing: spreadsheet programs run cells that start like a formula, and some entries contain text typed by an attacker (a failed sign-in stores the email that was typed). So any cell whose text starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading apostrophe (`'`). For example `=HYPERLINK("http://evil")` is written as `'=HYPERLINK("http://evil")`. Empty values are empty cells.
+- Formula neutralizing: spreadsheet programs run cells that start like a formula, and some entries contain text typed by an attacker (a failed sign-in stores the email that was typed). So any cell whose text starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading apostrophe (`'`). So is a cell that starts with a line feed. For example the cell text `=HYPERLINK("http://evil")` becomes `'=HYPERLINK("http://evil")` (before quoting; in the file that cell is then quoted as `"'=HYPERLINK(""http://evil"")"` because it contains double quotes). Empty values are empty cells.
 
 Columns, in order:
 
@@ -202,7 +203,7 @@ Columns, in order:
 | --- | --- | --- |
 | 400 | An invalid filter value | validation error with `fieldErrors` (see below); nothing is streamed and nothing is recorded |
 | 401 / 403 | Not signed in / not an Admin | as above |
-| 413 | More rows match than the cap | `{ "statusCode": 413, "error": "Payload Too Large", "message": "Too many rows to export (limit 50000). Narrow the filters.", "requestId": "..." }` (the number is the configured `AUDIT_EXPORT_MAX_ROWS`; no entry is recorded) |
+| 413 | More rows match than the cap | `{ "statusCode": 413, "error": "Payload Too Large", "message": "Too many rows to export (limit 50,000). Narrow the filters.", "requestId": "..." }` (the number is the configured `AUDIT_EXPORT_MAX_ROWS`, printed with a thousands separator; no entry is recorded) |
 | 429 | More than 10 exports per minute from one IP | see "Errors" below |
 
 ## Logging the use of the log
@@ -236,7 +237,7 @@ Error bodies follow the shape in `docs/api/auth.md`: `{ statusCode, error?, mess
 | 401 | Missing, invalid or expired access token, or the user is deactivated |
 | 403 | Signed in as Staff |
 | 413 | Export larger than `AUDIT_EXPORT_MAX_ROWS` (export only) |
-| 429 | Rate limited. The global limit is 120 requests per minute per IP, and `export.csv` allows 10 per minute. The body is `{ "statusCode": 429, "message": "ThrottlerException: Too Many Requests", "requestId": "..." }` (no `error` field). Back off and retry after a minute |
+| 429 | Rate limited (unless `THROTTLE_ENABLED=false`). The global limit is 120 requests per minute per IP, and `export.csv` allows 10 per minute. The body is `{ "statusCode": 429, "message": "ThrottlerException: Too Many Requests", "requestId": "..." }` (no `error` field). Back off and retry after a minute |
 
 ## Configuration
 
