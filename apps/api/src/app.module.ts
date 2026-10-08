@@ -1,7 +1,36 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from './config/config.module';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AuditModule } from './audit/audit.module';
+import { AuthGuard } from './auth/auth.guard';
+import { AuthModule } from './auth/auth.module';
+import { RolesGuard } from './auth/roles.guard';
+import { ConfigModule, ENV } from './config/config.module';
+import type { Env } from './config/env';
 import { DbModule } from './db/db.module';
 import { HealthModule } from './health/health.module';
+import { MailModule } from './mail/mail.module';
 
-@Module({ imports: [ConfigModule, DbModule, HealthModule] })
+@Module({
+  imports: [
+    ConfigModule,
+    ThrottlerModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env: Env) => ({
+        throttlers: [{ ttl: 60_000, limit: 120 }],
+        skipIf: () => !env.THROTTLE_ENABLED,
+      }),
+    }),
+    DbModule,
+    AuditModule,
+    MailModule,
+    AuthModule,
+    HealthModule,
+  ],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
+})
 export class AppModule {}

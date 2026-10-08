@@ -3,7 +3,8 @@ import * as argon2 from 'argon2';
 
 @Injectable()
 export class PasswordService {
-  private dummyHash: Promise<string> | null = null;
+  // Computed eagerly so the first login for an unknown email is not slower than later ones.
+  private readonly dummyHash: Promise<string> = argon2.hash('dummy-password-used-only-to-equalize-timing');
 
   hash(password: string): Promise<string> {
     return argon2.hash(password);
@@ -18,7 +19,6 @@ export class PasswordService {
   }
 
   async verifyDummy(password: string): Promise<void> {
-    this.dummyHash ??= argon2.hash('dummy-password-used-only-to-equalize-timing');
     await this.verify(await this.dummyHash, password);
   }
 }
