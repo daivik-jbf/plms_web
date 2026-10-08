@@ -1,0 +1,132 @@
+import { randomUUID } from 'node:crypto';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { and, eq } from 'drizzle-orm';
+import request from 'supertest';
+import type { Database } from '../src/db/db.module';
+import { auditLog, type User } from '../src/db/schema';
+import { bearer, loginMobile, type Session } from './helpers/auth';
+import { createTestApp } from './helpers/app';
+import { seedAudit } from './helpers/audit';
+import { parseCsv } from './helpers/csv';
+import { createUser } from './helpers/users';
+
+describe('audit export and page-opened marker', () => {
+  let app: NestExpressApplication;
+  let db: Database;
+  let adminUser: User;
+  let admin: Session;
+  let staff: Session;
+
+  beforeAll(async () => {
+    process.env.AUDIT_EXPORT_MAX_ROWS = '5';
+    ({ app, db } = await createTestApp());
+    adminUser = await createUser(db, { role: 'admin', name: 'Anita Rao' });
+    admin = await loginMobile(app, adminUser.email);
+    staff = await loginMobile(app, (await createUser(db, { role: 'staff' })).email);
+  });
+
+  afterAll(() => app.close());
+
+  const http = () => request(app.getHttpServer());
+  const exportCsv = (query: string) =>
+    http()
+      .get(`/api/audit/export.csv?${query}`)
+      .set(...bearer(admin))
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => (data += chunk));
+        res.on('end', () => callback(null, data));
+      });
+
+  it('is Admin-only for both endpoints', async () => {
+    await http().post('/api/audit/opened').expect(401);
+    await http().post('/api/audit/opened').set(...bearer(staff)).expect(403);
+    await http().get('/api/audit/export.csv').expect(401);
+    await http().get('/api/audit/export.csv').set(...bearer(staff)).expect(403);
+  });
+
+  describe('POST /api/audit/opened', () => {
+    it('records one audit.viewed entry per call for the signed-in Admin', async () => {
+      const before = await db.select().from(auditLog).where(and(eq(auditLog.actorId, adminUser.id), eq(auditLog.action, 'audit.viewed')));
+      await http().post('/api/audit/opened').set(...bearer(admin)).expect(204);
+      const after = await db.select().from(auditLog).where(and(eq(auditLog.actorId, adminUser.id), eq(auditLog.action, 'audit.viewed')));
+      expect(after.length).toBe(before.length + 1);
+      expect(after.at(-1)).toMatchObject({ actorRole: 'admin', actorLabel: adminUser.email });
+    });
+  });
+
+  describe('GET /api/audit/export.csv', () => {
+    it('streams a UTF-8 CSV with a BOM, a header row and the filtered rows newest first', async () => {
+      const actorId = randomUUID();
+      await seedAudit(db, [
+        { actorId, actorRole: 'staff', actorLabel: 'a@example.com', action: 'auth.logout', occurredAt: new Date('2026-04-01T10:00:00Z') },
+        { actorId, actorRole: 'staff', actorLabel: 'a@example.com', action: 'auth.login.succeeded', occurredAt: new Date('2026-04-01T09:00:00Z') },
+      ]);
+      const res = await exportCsv(`actorId=${actorId}`).expect(200);
+      expect(res.headers['content-type']).toMatch(/^text\/csv/);
+      expect(res.headers['content-disposition']).toMatch(/^attachment; filename="audit-log-\d{4}-\d{2}-\d{2}\.csv"$/);
+      expect(res.body.startsWith('﻿')).toBe(true);
+      const rows = parseCsv(res.body);
+      expect(rows[0]).toEqual([
+        'Time (UTC)', 'Person', 'Role', 'Action', 'Label', 'Target type', 'Target', 'Source', 'IP', 'App version', 'Request id', 'Summary', 'Changes',
+      ]);
+      expect(rows).toHaveLength(3);
+      expect(rows[1]![0]).toBe('2026-04-01T10:00:00.000Z');
+      expect(rows[1]![3]).toBe('auth.logout');
+      expect(rows[1]![11]).toBe('a@example.com signed out');
+      expect(rows[2]![3]).toBe('auth.login.succeeded');
+    });
+
+    it('neutralizes spreadsheet formulas and quotes awkward text', async () => {
+      const actorId = randomUUID();
+      const labels = ['=HYPERLINK("http://evil")', '+1+1', '@SUM(1)', 'comma, "quote"\nnewline'];
+      await seedAudit(
+        db,
+        labels.map((label, index) => ({
+          actorId,
+          actorLabel: label,
+          action: 'auth.login.failed',
+          occurredAt: new Date(Date.UTC(2026, 4, 1, 10, index)),
+        })),
+      );
+      const rows = parseCsv((await exportCsv(`actorId=${actorId}`).expect(200)).body);
+      const people = rows.slice(1).map((row) => row[1]);
+      expect(people).toEqual(["comma, \"quote\"\nnewline", "'@SUM(1)", "'+1+1", "'=HYPERLINK(\"http://evil\")"]);
+    });
+
+    it('exports a header-only file when nothing matches', async () => {
+      const rows = parseCsv((await exportCsv(`actorId=${randomUUID()}`).expect(200)).body);
+      expect(rows).toHaveLength(1);
+    });
+
+    it('allows exactly the cap and refuses cap + 1 with a clear 413', async () => {
+      const exactly = randomUUID();
+      await seedAudit(db, Array.from({ length: 5 }, () => ({ actorId: exactly })));
+      expect(parseCsv((await exportCsv(`actorId=${exactly}`).expect(200)).body)).toHaveLength(6);
+
+      const tooMany = randomUUID();
+      await seedAudit(db, Array.from({ length: 6 }, () => ({ actorId: tooMany })));
+      const res = await http().get(`/api/audit/export.csv?actorId=${tooMany}`).set(...bearer(admin)).expect(413);
+      expect(res.body.message).toBe('Too many rows to export (limit 5). Narrow the filters.');
+      expect(res.body.requestId).toBeDefined();
+    });
+
+    it('records audit.exported with the filters and row count but never the exported data', async () => {
+      const actorId = randomUUID();
+      const secretLabel = `secret-label-${randomUUID()}`;
+      await seedAudit(db, [{ actorId, actorLabel: secretLabel }, { actorId, actorLabel: secretLabel }]);
+      await exportCsv(`actorId=${actorId}`).expect(200);
+      const rows = await db.select().from(auditLog).where(and(eq(auditLog.actorId, adminUser.id), eq(auditLog.action, 'audit.exported')));
+      const entry = rows.at(-1)!;
+      expect(entry.metadata).toMatchObject({ rowCount: 2, filters: { actorId } });
+      expect(JSON.stringify(entry)).not.toContain(secretLabel);
+    });
+
+    it('rejects invalid filters before streaming anything', async () => {
+      const res = await http().get('/api/audit/export.csv?actorId=nope').set(...bearer(admin)).expect(400);
+      expect(res.body.fieldErrors.actorId).toBeDefined();
+    });
+  });
+});

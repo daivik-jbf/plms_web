@@ -16,6 +16,7 @@ const schema = z
     LOG_LEVEL: z.string().min(1).default('info'),
     TRUST_PROXY: booleanString('false'),
     THROTTLE_ENABLED: booleanString('true'),
+    AUDIT_EXPORT_MAX_ROWS: z.coerce.number().int().positive().default(50_000),
   })
   .superRefine((env, ctx) => {
     if (env.MAIL_TRANSPORT === 'smtp' && !env.SMTP_URL) {

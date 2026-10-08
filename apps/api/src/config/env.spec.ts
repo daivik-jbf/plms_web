@@ -28,4 +28,10 @@ describe('parseEnv', () => {
       /MAIL_TRANSPORT/,
     );
   });
+
+  it('defaults the audit export cap to 50,000 rows and accepts an override', () => {
+    expect(parseEnv(base).AUDIT_EXPORT_MAX_ROWS).toBe(50_000);
+    expect(parseEnv({ ...base, AUDIT_EXPORT_MAX_ROWS: '5' }).AUDIT_EXPORT_MAX_ROWS).toBe(5);
+    expect(() => parseEnv({ ...base, AUDIT_EXPORT_MAX_ROWS: '0' })).toThrow(/AUDIT_EXPORT_MAX_ROWS/);
+  });
 });
