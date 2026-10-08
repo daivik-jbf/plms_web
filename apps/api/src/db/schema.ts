@@ -107,7 +107,9 @@ export const auditLog = pgTable(
   },
   (table) => [
     index('audit_log_occurred_at_idx').on(table.occurredAt),
+    index('audit_log_paging_idx').on(table.occurredAt.desc(), table.id.desc()),
     index('audit_log_actor_idx').on(table.actorId),
+    index('audit_log_target_idx').on(table.targetId),
     index('audit_log_action_idx').on(table.action),
   ],
 );
