@@ -16,7 +16,7 @@ Last updated: 2026-10-08
 - API contract for the mobile developer in `docs/api/auth.md`.
 - Tests: 118 API tests and 19 web tests, all passing.
 
-## Built, awaiting approval: milestone 2 (Staff and Audit log screens)
+## Done: milestone 2 (Staff and Audit log screens), approved and merged 2026-10-08
 
 - Audit read API (Admin only): `GET /api/audit` with filters (person, involving, category, action, dates, text search, "Changes only"), newest-first keyset paging with microsecond-exact cursors, and server-generated labels, tones, categories and plain-English summaries for all 17 known actions; unknown actions still display.
 - `GET /api/audit/export.csv`: streamed UTF-8 CSV with a BOM, spreadsheet-formula neutralizing, a database-clock snapshot so the cap, the recorded row count and the rows are one set, a cap (`AUDIT_EXPORT_MAX_ROWS`, default 50,000, otherwise 413) and a 10-per-minute limit.
