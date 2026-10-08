@@ -39,7 +39,8 @@ Endpoints are private by default. In this document, "Public" means no token is n
 These do not affect mobile, but they explain some responses:
 
 - Web refresh and logout read the refresh token from the cookie, and they require the header `X-Requested-With: jbf-web`. Without it they return 403 `Missing required header.`.
-- The cookie is `SameSite=Strict`, so the web app and the API must be hosted under the same site (for example `app.example.org` and `api.example.org`).
+- As built, the web app calls the API with relative URLs (`/api/...`), so the web app and the API must be served from the same origin, for example one host name with a reverse proxy that sends `/api` to the API. Separate `app.` and `api.` subdomains do not work yet; a `VITE_API_BASE` setting for that is future work. The cookie is also `SameSite=Strict`.
+- A refresh that fails with 401 does not clear the cookie (two tabs refreshing at once must not sign each other out; a dead cookie is harmless). Logout and logout-all clear it. The web app serialises refresh across tabs with the Web Locks API.
 - CORS only allows the configured web origin. Native apps are not affected by CORS.
 
 ### Request headers
@@ -89,13 +90,15 @@ Limits are counted per client IP address, per minute.
 
 | Endpoints | Limit |
 | --- | --- |
-| `login`, `refresh`, `logout` | 20 per minute |
+| `login`, `refresh`, `logout`, `change-password` | 20 per minute |
 | `forgot-password`, `reset-password`, `invites/preview`, `invites/accept` | 10 per minute |
 | everything else | 120 per minute (global) |
 
 Any call can therefore return **429**. Throttled responses look like `{ statusCode: 429, message: "ThrottlerException: Too Many Requests", requestId }`. Back off, wait a minute and try again; do not retry in a tight loop. On a shared network (such as a facility Wi-Fi) many users share one IP, so the app should handle 429 gracefully.
 
 Account lockout: 5 wrong passwords in a row lock the account for 15 minutes. While locked, every login attempt (even with the right password) returns **429** with `Too many failed attempts. Try again in 15 minutes.`. A successful login resets the counter. An Admin reactivating a user, or a completed password reset, clears the lock.
+
+Note that only a real account can be locked: a locked account answers 429 while an unknown email keeps answering 401, so after 5 wrong guesses someone can tell that an account exists for that email. This is an accepted trade-off (a clear lockout message helps real users); the per-IP rate limit slows down anyone trying it on many emails.
 
 ## Password rules
 
@@ -175,7 +178,7 @@ Success `200`: `LoginResponse` for mobile. For web the body is `{ user, accessTo
 Errors:
 
 - `400` validation (`fieldErrors.email`, `fieldErrors.password`).
-- `401` `Invalid email or password.` Used for a wrong password, an unknown email and a deactivated account alike, so the response never reveals which accounts exist.
+- `401` `Invalid email or password.` Used for a wrong password, an unknown email and a deactivated account alike. The one exception is lockout: a locked real account answers 429 (below) while an unknown email keeps answering 401, so account existence can be inferred after 5 wrong guesses (see "Rate limits and lockout").
 - `429` the account is locked (`Too many failed attempts. Try again in 15 minutes.`) or the IP is rate limited.
 
 ### POST /api/auth/refresh
@@ -190,7 +193,7 @@ Success `200`: same body as login with a new `accessToken` and (mobile) a new `r
 
 Errors:
 
-- `401` `Session expired. Please sign in again.` The token is missing, unknown, expired, already used, revoked, or the user is deactivated. Sign the user out (mobile: delete the stored tokens). On web the cookie is cleared.
+- `401` `Session expired. Please sign in again.` The token is missing, unknown, expired, already used, revoked, or the user is deactivated. Sign the user out (mobile: delete the stored tokens). On web the cookie is left as it is (it is no longer valid; logout clears it), so a tab that loses a refresh race cannot wipe the cookie another tab has just received.
 - `403` `Missing required header.` (web without `X-Requested-With: jbf-web`).
 - `400`, `429` as above.
 
@@ -242,7 +245,7 @@ Errors:
 
 ### POST /api/auth/change-password
 
-Auth: Any signed-in user.
+Auth: Any signed-in user. Rate limit 20/min.
 
 Request: `{ "currentPassword": "...", "newPassword": "..." }`
 
@@ -253,6 +256,7 @@ Errors:
 - `400` with `fieldErrors.currentPassword: ["Current password is incorrect."]`.
 - `400` with `fieldErrors.newPassword` when the new password breaks a rule.
 - `401`.
+- `429`.
 
 ### GET /api/auth/me
 

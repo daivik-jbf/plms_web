@@ -47,6 +47,14 @@ npm audit --audit-level=high
 
 The API tests drop and recreate a separate database named `jbf_lms_test` on the local PostgreSQL server on every run (set `TEST_DATABASE_URL` to use a different server; the database name must end in `_test`). Your development database is never touched. CI runs the same four commands on every push.
 
+## Deployment notes
+
+Full deployment hardening is milestone 7. Until then, keep these in mind:
+
+- Serve the web app and the API from the same origin (one host name, with a reverse proxy sending `/api` to the API). The web app calls relative `/api/...` URLs and the refresh cookie is `SameSite=Strict`, so separate `app.` and `api.` subdomains do not work yet (a `VITE_API_BASE` setting is future work).
+- Production MUST set `NODE_ENV=production`. The `Secure` flag on the refresh cookie and the ban on the console mailer depend on it.
+- Login lockout (5 wrong passwords, 15 minutes) applies only to real accounts: a locked account answers 429 while an unknown email keeps answering 401, so account existence can be inferred after 5 wrong guesses. This is an accepted trade-off, slowed by the per-IP rate limit.
+
 ## Where things are
 
 - Design spec (source of truth): `docs/superpowers/specs/2026-10-08-jbf-lms-portal-design.md`

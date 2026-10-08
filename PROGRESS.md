@@ -31,7 +31,9 @@ Staff management screens (invite, list, change role, deactivate and reactivate i
 3. Storage provider (Cloudflare R2 vs AWS S3) and the real upload size limits are still to be decided before milestone 3.
 4. Which SMTP provider will send invites and reset emails in production.
 5. The mobile app's framework, to confirm that the login contract in `docs/api/auth.md` fits it.
-6. Web sign-in and refresh need the web app and the API to be hosted under the same site (for example `app.example.org` and `api.example.org`), because the refresh cookie is `SameSite=Strict`.
+6. Hosting: as built, the web app calls relative `/api/...` URLs, so the web app and the API must be served from the same origin (one host name with a reverse proxy sending `/api` to the API). Separate `app.` and `api.` subdomains are not supported yet; a `VITE_API_BASE` setting is future work.
 7. Development machine only: npm needs `NODE_EXTRA_CA_CERTS` pointing at an exported keychain certificate bundle (a local TLS-inspection issue on this machine, not a project issue). CI does not need it.
 8. The first Admin has NOT been created yet in the development database. Create it with `npm run admin:create -w @jbf/api -- <email> "<Full Name>"`.
 9. The manual browser check of the screens (responsive layout, focus ring) has not been done yet.
+10. Milestone 7 (deployment): production deployments MUST set `NODE_ENV=production`. The `Secure` flag on the refresh cookie and the ban on the console mailer both depend on it.
+11. Login lockout reveals account existence: a locked real account answers 429 while an unknown email keeps answering 401, so existence can be inferred after 5 wrong guesses. Accepted trade-off; throttled per IP.

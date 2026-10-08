@@ -17,3 +17,4 @@ One line per meaningful change, newest last.
 - 2026-10-08: Added the web foundation with design tokens and the API client.
 - 2026-10-08: Added the sign-in, invite acceptance and password reset screens.
 - 2026-10-08: Added CI, the README, the mobile API contract and the working-memory files.
+- 2026-10-08: Fixed review findings: a losing refresh no longer clears the web cookie and the web app serialises refresh across tabs; logout is audited in its own transaction and only once; refresh locks the user row so a password change or deactivation cannot miss a new token; forgot-password requests are serialised; pool errors are logged instead of crashing; SMTP timeouts; the forgot, invite and reset screens show real errors; docs corrected for lockout, hosting and the refresh cookie.
