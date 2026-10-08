@@ -9,6 +9,7 @@ import { ConfigModule, ENV } from './config/config.module';
 import type { Env } from './config/env';
 import { DbModule } from './db/db.module';
 import { HealthModule } from './health/health.module';
+import { InvitesModule } from './invites/invites.module';
 import { MailModule } from './mail/mail.module';
 
 @Module({
@@ -26,6 +27,7 @@ import { MailModule } from './mail/mail.module';
     MailModule,
     AuthModule,
     HealthModule,
+    InvitesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
