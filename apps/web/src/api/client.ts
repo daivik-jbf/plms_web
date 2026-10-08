@@ -96,7 +96,7 @@ export function refreshSession(): Promise<boolean> {
   return refreshInFlight;
 }
 
-export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function execute(path: string, options: RequestOptions): Promise<Response> {
   const auth = options.auth ?? true;
   let response = await send(path, options);
   if (response.status === 401 && auth && path !== REFRESH_PATH) {
@@ -107,5 +107,19 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       onSessionLost();
     }
   }
-  return parse<T>(response);
+  return response;
+}
+
+export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  return parse<T>(await execute(path, options));
+}
+
+// Fetches a file with the same sign-in handling as api(). The bearer token lives only in memory, so a plain
+// <a href> cannot download protected files.
+export async function apiDownload(path: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await execute(path, {});
+  if (!response.ok) await parse(response);
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const filename = /filename="?([^";]+)"?/.exec(disposition)?.[1] ?? 'download';
+  return { blob: await response.blob(), filename };
 }

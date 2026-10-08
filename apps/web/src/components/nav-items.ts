@@ -10,6 +10,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', group: 'main', end: true },
   { to: '/staff', label: 'Staff', group: 'admin', adminOnly: true },
+  { to: '/audit', label: 'Audit log', group: 'admin', adminOnly: true },
 ];
 
 export const NAV_GROUPS: { id: NavItem['group']; label: string | null }[] = [

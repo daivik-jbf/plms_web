@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../test/fetch-mock';
-import { api, ApiError, describeError, refreshSession, setAccessToken, setSessionLostHandler, TOO_MANY_REQUESTS } from './client';
+import { api, apiDownload, ApiError, describeError, refreshSession, setAccessToken, setSessionLostHandler, TOO_MANY_REQUESTS } from './client';
 
 describe('api client', () => {
   beforeEach(() => {
@@ -136,5 +136,41 @@ describe('describeError', () => {
     expect(describeError(new ApiError(500, 'stack trace here'))).toBe('Something went wrong. Please try again.');
     expect(describeError(new ApiError(429, 'x'))).toBe(TOO_MANY_REQUESTS);
     expect(describeError(new TypeError('Failed to fetch'))).toBe('Something went wrong. Please try again.');
+  });
+});
+
+describe('apiDownload', () => {
+  beforeEach(() => {
+    setAccessToken(null);
+    setSessionLostHandler(() => undefined);
+    vi.unstubAllGlobals();
+  });
+
+  it('returns the file and the filename from Content-Disposition', async () => {
+    setAccessToken('abc');
+    mockFetch(() => ({ text: 'a,b\r\n', headers: { 'Content-Disposition': 'attachment; filename="audit-log-2026-10-08.csv"' } }));
+    const { blob, filename } = await apiDownload('/api/audit/export.csv');
+    expect(filename).toBe('audit-log-2026-10-08.csv');
+    expect(await blob.text()).toBe('a,b\r\n');
+  });
+
+  it('refreshes once on 401 and retries, like api()', async () => {
+    setAccessToken('old');
+    const calls: string[] = [];
+    mockFetch((url, init) => {
+      calls.push(url);
+      if (url === '/api/auth/refresh') return { body: { accessToken: 'new' } };
+      return (init.headers as Record<string, string>).Authorization === 'Bearer new' ? { text: 'x' } : { status: 401, body: {} };
+    });
+    await apiDownload('/api/audit/export.csv');
+    expect(calls).toEqual(['/api/audit/export.csv', '/api/auth/refresh', '/api/audit/export.csv']);
+  });
+
+  it('throws an ApiError carrying the server message when the export is refused', async () => {
+    mockFetch(() => ({ status: 413, body: { message: 'Too many rows to export (limit 50000). Narrow the filters.' } }));
+    await expect(apiDownload('/api/audit/export.csv')).rejects.toMatchObject({
+      status: 413,
+      message: 'Too many rows to export (limit 50000). Narrow the filters.',
+    });
   });
 });

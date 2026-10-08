@@ -59,6 +59,7 @@ describe('AppShell', () => {
     renderShell(ADMIN);
     const nav = await screen.findByRole('navigation', { name: 'Main' });
     expect(within(nav).getByRole('link', { name: 'Staff' })).toHaveAttribute('href', '/staff');
+    expect(within(nav).getByRole('link', { name: 'Audit log' })).toHaveAttribute('href', '/audit');
     expect(within(nav).getByText('Admin')).toBeInTheDocument();
   });
 
@@ -66,6 +67,7 @@ describe('AppShell', () => {
     renderShell(STAFF);
     const nav = await screen.findByRole('navigation', { name: 'Main' });
     expect(within(nav).queryByRole('link', { name: 'Staff' })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Audit log' })).not.toBeInTheDocument();
     expect(within(nav).queryByText('Admin')).not.toBeInTheDocument();
   });
 });
