@@ -112,19 +112,23 @@ export class UsersService {
 
   // Always locks the active Admin rows first, in id order, and the target second. A fixed lock order
   // lets two concurrent demotions queue up instead of deadlocking, and the second one then sees the
-  // first one's result.
+  // first one's result. The locks are FOR NO KEY UPDATE, not FOR UPDATE: they still serialise these
+  // writers, but they do not conflict with the key-share locks that inserting a refresh token takes on
+  // the user row, so a login or refresh does not deadlock against a role change or deactivation. They do
+  // conflict with the FOR SHARE lock a refresh takes on its user (SessionService.rotate), on purpose: a
+  // deactivation and a rotation for the same user queue up, user row first, then token rows.
   private async lockAdminsThenTarget(tx: DbTransaction, id: string): Promise<{ target: User; admins: { id: string }[] }> {
     const admins = await tx
       .select({ id: users.id })
       .from(users)
       .where(and(eq(users.role, 'admin'), eq(users.status, 'active')))
       .orderBy(asc(users.id))
-      .for('update');
+      .for('no key update');
     return { target: await this.lockUser(tx, id), admins };
   }
 
   private async lockUser(tx: DbTransaction, id: string): Promise<User> {
-    const [user] = await tx.select().from(users).where(eq(users.id, id)).for('update');
+    const [user] = await tx.select().from(users).where(eq(users.id, id)).for('no key update');
     if (!user) {
       throw new NotFoundException('User not found.');
     }

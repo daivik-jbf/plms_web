@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { DB, type Database, type DbExecutor } from '../db/db.module';
 import { refreshTokens, users } from '../db/schema';
@@ -29,33 +29,48 @@ export class SessionService {
     return token;
   }
 
+  // Lock order: the user row first (FOR SHARE), then the token row (FOR UPDATE). Password change, password
+  // reset and deactivation update or lock the user row before they revoke the user's tokens, so they wait
+  // for an in-flight rotation to commit (and then revoke its new token), or the rotation waits for them and
+  // then sees its token revoked. Without the user lock a rotation could insert a fresh token that the
+  // concurrent revoke statement never sees.
   async rotate(token: string, client: ClientKind): Promise<{ userId: string; token: string } | null> {
+    const tokenHash = hashOpaqueToken(token);
     return this.db.transaction(async (tx) => {
-      const [row] = await tx
-        .select()
+      const [unlocked] = await tx
+        .select({ userId: refreshTokens.userId })
         .from(refreshTokens)
-        .where(eq(refreshTokens.tokenHash, hashOpaqueToken(token)))
-        .for('update');
-      if (!row) {
+        .where(eq(refreshTokens.tokenHash, tokenHash));
+      if (!unlocked) {
+        return null;
+      }
+      const [user] = await tx
+        .select({ status: users.status, role: users.role, email: users.email })
+        .from(users)
+        .where(eq(users.id, unlocked.userId))
+        .for('share');
+      const [row] = await tx.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash)).for('update');
+      if (!row || !user) {
         return null;
       }
       const now = Date.now();
       if (row.revokedAt) {
         if (now - row.revokedAt.getTime() > REUSE_GRACE_MS) {
           await this.revokeFamily(tx, row.familyId);
-          await this.audit.record(tx, {
-            actor: { id: row.userId },
-            action: 'auth.refresh.reuse_detected',
-            target: { type: 'user', id: row.userId, label: row.userId },
-          });
+          if (await this.wasRotated(tx, row)) {
+            await this.audit.record(tx, {
+              actor: { id: row.userId, role: user.role, label: user.email },
+              action: 'auth.refresh.reuse_detected',
+              target: { type: 'user', id: row.userId, label: user.email },
+            });
+          }
         }
         return null;
       }
       if (row.expiresAt.getTime() <= now) {
         return null;
       }
-      const [user] = await tx.select({ status: users.status }).from(users).where(eq(users.id, row.userId));
-      if (!user || user.status !== 'active') {
+      if (user.status !== 'active') {
         await this.revokeFamily(tx, row.familyId);
         return null;
       }
@@ -64,15 +79,18 @@ export class SessionService {
     });
   }
 
-  async revokeFamilyOf(token: string): Promise<{ userId: string } | null> {
-    return this.db.transaction(async (tx) => {
-      const [row] = await tx.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, hashOpaqueToken(token)));
-      if (!row) {
-        return null;
-      }
-      await this.revokeFamily(tx, row.familyId);
-      return { userId: row.userId };
-    });
+  // Revokes the family of the presented token. Returns the owner only when this call actually revoked
+  // something, so a repeated logout with an already-dead token is a silent no-op.
+  async revokeFamilyOf(executor: DbExecutor, token: string): Promise<{ userId: string } | null> {
+    const [row] = await executor
+      .select({ userId: refreshTokens.userId, familyId: refreshTokens.familyId })
+      .from(refreshTokens)
+      .where(eq(refreshTokens.tokenHash, hashOpaqueToken(token)));
+    if (!row) {
+      return null;
+    }
+    const revoked = await this.revokeFamily(executor, row.familyId);
+    return revoked > 0 ? { userId: row.userId } : null;
   }
 
   async revokeAllForUser(executor: DbExecutor, userId: string): Promise<void> {
@@ -82,10 +100,30 @@ export class SessionService {
       .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
   }
 
-  private async revokeFamily(executor: DbExecutor, familyId: string): Promise<void> {
-    await executor
+  // A revoked token counts as "reused" only if it was rotated, i.e. its family holds a newer token. A token
+  // that was revoked by logout, a password change or deactivation and is presented later is just stale.
+  // The timestamp comparison stays in SQL because a JS Date would drop the microseconds.
+  private async wasRotated(executor: DbExecutor, row: { id: string; familyId: string }): Promise<boolean> {
+    const [newer] = await executor
+      .select({ id: refreshTokens.id })
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.familyId, row.familyId),
+          ne(refreshTokens.id, row.id),
+          sql`${refreshTokens.createdAt} > (select created_at from refresh_tokens where id = ${row.id})`,
+        ),
+      )
+      .limit(1);
+    return Boolean(newer);
+  }
+
+  private async revokeFamily(executor: DbExecutor, familyId: string): Promise<number> {
+    const revoked = await executor
       .update(refreshTokens)
       .set({ revokedAt: new Date() })
-      .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)));
+      .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)))
+      .returning({ id: refreshTokens.id });
+    return revoked.length;
   }
 }

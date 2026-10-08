@@ -1,8 +1,8 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import request from 'supertest';
 import type { Database } from '../src/db/db.module';
-import { auditLog, passwordResets, users } from '../src/db/schema';
+import { auditLog, passwordResets, refreshTokens, users } from '../src/db/schema';
 import { bearer, loginMobile } from './helpers/auth';
 import { createTestApp } from './helpers/app';
 import type { MemoryMailer } from './helpers/memory-mailer';
@@ -43,6 +43,17 @@ describe('password reset and change', () => {
       expect(unknown.body).toEqual(real.body);
       expect(off.body).toEqual(real.body);
       expect(mailer.sent).toHaveLength(0);
+    });
+
+    it('leaves exactly one live link when two requests for one account race', async () => {
+      const user = await createUser(db);
+      await Promise.all([
+        http().post('/api/auth/forgot-password').send({ email: user.email }).expect(202),
+        http().post('/api/auth/forgot-password').send({ email: user.email }).expect(202),
+      ]);
+      const live = await db.select().from(passwordResets).where(and(eq(passwordResets.userId, user.id), isNull(passwordResets.usedAt)));
+      expect(live).toHaveLength(1);
+      expect(await db.select().from(passwordResets).where(eq(passwordResets.userId, user.id))).toHaveLength(2);
     });
 
     it('still answers 202 when the mail server is down', async () => {
@@ -131,6 +142,31 @@ describe('password reset and change', () => {
       await loginMobile(app, user.email, 'a fresh new passphrase');
       const rows = await db.select().from(auditLog).where(and(eq(auditLog.actorId, user.id), eq(auditLog.action, 'auth.password.changed')));
       expect(rows).toHaveLength(1);
+    });
+
+    it('invalidates outstanding reset links', async () => {
+      const user = await createUser(db);
+      const session = await loginMobile(app, user.email);
+      mailer.clear();
+      await http().post('/api/auth/forgot-password').send({ email: user.email }).expect(202);
+      const token = tokenFromMail();
+      await http().post('/api/auth/change-password').set(...bearer(session)).send({ currentPassword: TEST_PASSWORD, newPassword: 'a fresh new passphrase' }).expect(204);
+      await http().post('/api/auth/reset-password').send({ token, newPassword: 'yet another passphrase' }).expect(400);
+    });
+
+    it('never leaves a live refresh token when a refresh races a password change', async () => {
+      for (let i = 0; i < 10; i += 1) {
+        const user = await createUser(db);
+        const session = await loginMobile(app, user.email);
+        const [change, refresh] = await Promise.all([
+          http().post('/api/auth/change-password').set(...bearer(session)).send({ currentPassword: TEST_PASSWORD, newPassword: 'a fresh new passphrase' }),
+          http().post('/api/auth/refresh').send({ client: 'mobile', refreshToken: session.refreshToken }),
+        ]);
+        expect(change.status).toBe(204);
+        expect([200, 401]).toContain(refresh.status);
+        const live = await db.select().from(refreshTokens).where(and(eq(refreshTokens.userId, user.id), isNull(refreshTokens.revokedAt)));
+        expect(live).toHaveLength(0);
+      }
     });
   });
 });

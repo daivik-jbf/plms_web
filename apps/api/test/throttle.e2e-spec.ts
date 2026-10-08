@@ -22,4 +22,17 @@ describe('rate limiting', () => {
     expect(statuses.slice(0, 20).every((s) => s === 401)).toBe(true);
     expect(statuses.slice(20)).toContain(429);
   });
+
+  it('returns 429 after too many change-password attempts from one IP', async () => {
+    const attempt = () =>
+      request(app.getHttpServer())
+        .post('/api/auth/change-password')
+        .send({ currentPassword: 'whatever whatever', newPassword: 'another long passphrase' });
+    const statuses: number[] = [];
+    for (let i = 0; i < 25; i += 1) {
+      statuses.push((await attempt()).status);
+    }
+    expect(statuses.slice(0, 20).every((s) => s === 401)).toBe(true);
+    expect(statuses.slice(20)).toContain(429);
+  });
 });

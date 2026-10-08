@@ -1,5 +1,6 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
+import { Client } from 'pg';
 import request from 'supertest';
 import type { Database } from '../src/db/db.module';
 import { hashOpaqueToken } from '../src/auth/opaque-token';
@@ -162,6 +163,19 @@ describe('authentication', () => {
       await http().post('/api/auth/refresh').send({ client: 'mobile', refreshToken: rotated.body.refreshToken }).expect(401);
       const rows = await db.select().from(auditLog).where(and(eq(auditLog.actorId, user.id), eq(auditLog.action, 'auth.refresh.reuse_detected')));
       expect(rows).toHaveLength(1);
+      expect(rows[0].actorRole).toBe('staff');
+    });
+
+    it('refuses a token that was ended by logout, without raising a reuse alert', async () => {
+      const user = await createUser(db);
+      const session = await loginMobile(app, user.email);
+      await http().post('/api/auth/logout').send({ client: 'mobile', refreshToken: session.refreshToken }).expect(204);
+      await db.update(refreshTokens).set({ revokedAt: new Date(Date.now() - 60_000) }).where(eq(refreshTokens.userId, user.id));
+      await http().post('/api/auth/refresh').send({ client: 'mobile', refreshToken: session.refreshToken }).expect(401);
+      const live = await db.select().from(refreshTokens).where(and(eq(refreshTokens.userId, user.id), isNull(refreshTokens.revokedAt)));
+      expect(live).toHaveLength(0);
+      const rows = await db.select().from(auditLog).where(and(eq(auditLog.actorId, user.id), eq(auditLog.action, 'auth.refresh.reuse_detected')));
+      expect(rows).toHaveLength(0);
     });
 
     it('serves two parallel refreshes without logging the user out', async () => {
@@ -174,6 +188,62 @@ describe('authentication', () => {
       const winner = results.find((r) => r.status === 200);
       expect(winner).toBeDefined();
       await http().post('/api/auth/refresh').send({ client: 'mobile', refreshToken: winner!.body.refreshToken }).expect(200);
+    });
+
+    it('lets exactly one of two parallel web refreshes win and never clears the cookie on the loser', async () => {
+      const user = await createUser(db);
+      const login = await http().post('/api/auth/login').send({ email: user.email, password: TEST_PASSWORD }).expect(200);
+      const cookie = refreshCookie(login.headers['set-cookie']);
+      const refresh = () =>
+        http().post('/api/auth/refresh').set('Cookie', cookie).set('X-Requested-With', 'jbf-web').send({ client: 'web' });
+      const results = await Promise.all([refresh(), refresh()]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+      const winner = results.find((r) => r.status === 200)!;
+      const loser = results.find((r) => r.status === 401)!;
+      expect(refreshCookie(winner.headers['set-cookie'])).not.toBe(cookie);
+      const loserCookies = ([] as string[]).concat(loser.headers['set-cookie'] ?? []);
+      expect(loserCookies.filter((c) => c.startsWith('jbf_rt='))).toEqual([]);
+    });
+
+    it('does not clear the web cookie on a refresh 401', async () => {
+      const res = await http()
+        .post('/api/auth/refresh')
+        .set('Cookie', 'jbf_rt=not-a-real-token')
+        .set('X-Requested-With', 'jbf-web')
+        .send({ client: 'web' })
+        .expect(401);
+      expect(res.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('makes a refresh wait for a transaction that holds the user row, so a concurrent revoke cannot miss its token', async () => {
+      const user = await createUser(db);
+      const session = await loginMobile(app, user.email);
+      const holder = new Client({ connectionString: process.env.DATABASE_URL });
+      await holder.connect();
+      try {
+        // Mirrors change-password / reset: update the user row first, revoke the tokens second.
+        await holder.query('begin');
+        await holder.query('update users set updated_at = now() where id = $1', [user.id]);
+        const pending = http().post('/api/auth/refresh').send({ client: 'mobile', refreshToken: session.refreshToken }).then((r) => r);
+        const deadline = Date.now() + 5000;
+        let waiting = 0;
+        while (waiting === 0 && Date.now() < deadline) {
+          const { rows } = await holder.query<{ n: number }>(
+            "select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and pid <> pg_backend_pid()",
+          );
+          waiting = rows[0].n;
+          if (waiting === 0) await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(waiting).toBe(1);
+        await holder.query('update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null', [user.id]);
+        await holder.query('commit');
+        const res = await pending;
+        expect(res.status).toBe(401);
+      } finally {
+        await holder.end();
+      }
+      const live = await db.select().from(refreshTokens).where(and(eq(refreshTokens.userId, user.id), isNull(refreshTokens.revokedAt)));
+      expect(live).toHaveLength(0);
     });
 
     it('refuses to refresh for a deactivated user', async () => {
@@ -193,13 +263,30 @@ describe('authentication', () => {
   });
 
   describe('logout', () => {
-    it('revokes the session and is idempotent', async () => {
+    it('revokes the session and is idempotent, auditing only the logout that ended it', async () => {
       const user = await createUser(db);
       const session = await loginMobile(app, user.email);
+      const logoutRows = () => db.select().from(auditLog).where(and(eq(auditLog.actorId, user.id), eq(auditLog.action, 'auth.logout')));
       await http().post('/api/auth/logout').send({ client: 'mobile', refreshToken: session.refreshToken }).expect(204);
+      const first = await logoutRows();
+      expect(first).toHaveLength(1);
+      expect(first[0]).toMatchObject({ actorRole: 'staff', actorLabel: user.email });
       await http().post('/api/auth/refresh').send({ client: 'mobile', refreshToken: session.refreshToken }).expect(401);
       await http().post('/api/auth/logout').send({ client: 'mobile', refreshToken: session.refreshToken }).expect(204);
       await http().post('/api/auth/logout').send({ client: 'mobile' }).expect(204);
+      expect(await logoutRows()).toHaveLength(1);
+    });
+
+    it('clears the web cookie on logout', async () => {
+      const user = await createUser(db);
+      const login = await http().post('/api/auth/login').send({ email: user.email, password: TEST_PASSWORD }).expect(200);
+      const res = await http()
+        .post('/api/auth/logout')
+        .set('Cookie', refreshCookie(login.headers['set-cookie']))
+        .set('X-Requested-With', 'jbf-web')
+        .send({ client: 'web' })
+        .expect(204);
+      expect(([] as string[]).concat(res.headers['set-cookie'] ?? []).find((c) => c.startsWith('jbf_rt='))).toMatch(/Expires=Thu, 01 Jan 1970/);
     });
 
     it('logout-all revokes every session for the user', async () => {

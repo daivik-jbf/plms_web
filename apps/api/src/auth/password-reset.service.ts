@@ -1,9 +1,9 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { ENV } from '../config/config.module';
 import type { Env } from '../config/env';
-import { DB, type Database } from '../db/db.module';
+import { DB, type Database, type DbExecutor } from '../db/db.module';
 import { passwordResets, users } from '../db/schema';
 import { MAILER, type Mailer } from '../mail/mailer';
 import { resetEmail } from '../mail/templates';
@@ -36,10 +36,10 @@ export class PasswordResetService {
     const { token, hash } = generateOpaqueToken();
     const expiresAt = new Date(Date.now() + RESET_TTL_MS);
     await this.db.transaction(async (tx) => {
-      await tx
-        .update(passwordResets)
-        .set({ usedAt: new Date() })
-        .where(and(eq(passwordResets.userId, user.id), isNull(passwordResets.usedAt)));
+      // Serialise concurrent requests for the same user so only one link stays live. An advisory lock
+      // rather than a user row lock, which would deadlock with reset() (reset row first, then user).
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${user.id}, 0))`);
+      await this.invalidateResets(tx, user.id);
       await tx.insert(passwordResets).values({ userId: user.id, tokenHash: hash, expiresAt });
       await this.audit.record(tx, {
         actor: { id: user.id, role: user.role, label: user.email },
@@ -91,6 +91,8 @@ export class PasswordResetService {
     }
     const passwordHash = await this.passwords.hash(newPassword);
     await this.db.transaction(async (tx) => {
+      // Lock order matches reset(): reset rows before the user row, then the refresh tokens.
+      await this.invalidateResets(tx, user.id);
       await tx.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, user.id));
       await this.sessions.revokeAllForUser(tx, user.id);
       await this.audit.record(tx, {
@@ -98,5 +100,12 @@ export class PasswordResetService {
         action: 'auth.password.changed',
       });
     });
+  }
+
+  private async invalidateResets(executor: DbExecutor, userId: string): Promise<void> {
+    await executor
+      .update(passwordResets)
+      .set({ usedAt: new Date() })
+      .where(and(eq(passwordResets.userId, userId), isNull(passwordResets.usedAt)));
   }
 }

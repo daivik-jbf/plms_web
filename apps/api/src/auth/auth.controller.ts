@@ -52,18 +52,13 @@ export class AuthController {
     @Body(new ZodPipe(sessionTokenSchema)) body: SessionTokenInput,
     @Res({ passthrough: true }) res: Response,
   ) {
-    try {
-      const token = this.readRefreshToken(req, body);
-      if (!token) {
-        throw new UnauthorizedException('Session expired. Please sign in again.');
-      }
-      return this.respond(res, body.client, await this.auth.refresh(token, body.client));
-    } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        this.clearCookie(res, body.client);
-      }
-      throw error;
+    // A 401 here deliberately leaves the cookie alone: when two tabs race, the loser's response must not
+    // wipe the cookie the winner just set. A dead cookie is harmless and logout still clears it.
+    const token = this.readRefreshToken(req, body);
+    if (!token) {
+      throw new UnauthorizedException('Session expired. Please sign in again.');
     }
+    return this.respond(res, body.client, await this.auth.refresh(token, body.client));
   }
 
   @Public()
@@ -103,6 +98,7 @@ export class AuthController {
     await this.resets.reset(body.token, body.newPassword);
   }
 
+  @Throttle(authThrottle)
   @Post('change-password')
   @HttpCode(204)
   async changePassword(

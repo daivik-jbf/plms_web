@@ -2,7 +2,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
 import type { Database } from '../src/db/db.module';
-import { auditLog, users } from '../src/db/schema';
+import { auditLog, refreshTokens, users } from '../src/db/schema';
 import { bearer, loginMobile } from './helpers/auth';
 import { createTestApp } from './helpers/app';
 import { createUser } from './helpers/users';
@@ -70,8 +70,12 @@ describe('user management', () => {
     const target = await createUser(db, { role: 'staff' });
     const adminSession = await loginMobile(app, admin.email);
     const targetSession = await loginMobile(app, target.email);
+    await loginMobile(app, target.email);
 
     await http().post(`/api/users/${target.id}/deactivate`).set(...bearer(adminSession)).expect(200);
+    const tokens = await db.select().from(refreshTokens).where(eq(refreshTokens.userId, target.id));
+    expect(tokens).toHaveLength(2);
+    expect(tokens.every((t) => t.revokedAt !== null)).toBe(true);
     await http().get('/api/auth/me').set(...bearer(targetSession)).expect(401);
     await http().post('/api/auth/refresh').send({ client: 'mobile', refreshToken: targetSession.refreshToken }).expect(401);
     await http().post('/api/auth/login').send({ email: target.email, password: 'correct horse battery', client: 'mobile' }).expect(401);

@@ -95,10 +95,17 @@ export class AuthService {
     if (!token) {
       return;
     }
-    const revoked = await this.sessions.revokeFamilyOf(token);
-    if (revoked) {
-      await this.audit.record(this.db, { actor: { id: revoked.userId }, action: 'auth.logout' });
-    }
+    await this.db.transaction(async (tx) => {
+      const revoked = await this.sessions.revokeFamilyOf(tx, token);
+      if (!revoked) {
+        return;
+      }
+      const [user] = await tx.select({ role: users.role, email: users.email }).from(users).where(eq(users.id, revoked.userId));
+      await this.audit.record(tx, {
+        actor: { id: revoked.userId, role: user?.role ?? null, label: user?.email ?? null },
+        action: 'auth.logout',
+      });
+    });
   }
 
   async logoutAll(user: AuthUser): Promise<void> {
