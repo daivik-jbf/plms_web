@@ -16,7 +16,8 @@ const GENERIC_FAILURE = 'Something went wrong. Please try again.';
 export function describeError(error: unknown): string {
   if (!(error instanceof ApiError)) return GENERIC_FAILURE;
   if (error.status === 429) return TOO_MANY_REQUESTS;
-  return error.status >= 500 ? GENERIC_FAILURE : error.message;
+  // 502 is the API's own "saved, but the email could not be sent" answer and carries a safe message.
+  return error.status >= 500 && error.status !== 502 ? GENERIC_FAILURE : error.message;
 }
 
 interface RequestOptions {

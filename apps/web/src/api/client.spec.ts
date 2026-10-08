@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../test/fetch-mock';
-import { api, ApiError, refreshSession, setAccessToken, setSessionLostHandler } from './client';
+import { api, ApiError, describeError, refreshSession, setAccessToken, setSessionLostHandler, TOO_MANY_REQUESTS } from './client';
 
 describe('api client', () => {
   beforeEach(() => {
@@ -121,5 +121,20 @@ describe('api client', () => {
       message: 'Invalid email or password.',
     });
     expect(calls).toEqual(['/api/auth/login']);
+  });
+});
+
+describe('describeError', () => {
+  it('shows server messages for client errors and for the 502 "email failed" answer', () => {
+    expect(describeError(new ApiError(409, 'At least one active Admin is required.'))).toBe('At least one active Admin is required.');
+    expect(describeError(new ApiError(502, 'The invite was saved but the email could not be sent. Use Resend to try again.'))).toBe(
+      'The invite was saved but the email could not be sent. Use Resend to try again.',
+    );
+  });
+
+  it('hides internals of other server errors and network failures, and words rate limiting fixedly', () => {
+    expect(describeError(new ApiError(500, 'stack trace here'))).toBe('Something went wrong. Please try again.');
+    expect(describeError(new ApiError(429, 'x'))).toBe(TOO_MANY_REQUESTS);
+    expect(describeError(new TypeError('Failed to fetch'))).toBe('Something went wrong. Please try again.');
   });
 });

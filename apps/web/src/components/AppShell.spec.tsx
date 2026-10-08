@@ -54,4 +54,18 @@ describe('AppShell', () => {
     await userEvent.click(within(drawer).getByRole('link', { name: 'Dashboard' }));
     expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
   });
+
+  it('shows the Admin section only to Admins', async () => {
+    renderShell(ADMIN);
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(within(nav).getByRole('link', { name: 'Staff' })).toHaveAttribute('href', '/staff');
+    expect(within(nav).getByText('Admin')).toBeInTheDocument();
+  });
+
+  it('hides the Admin section from Staff', async () => {
+    renderShell(STAFF);
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(within(nav).queryByRole('link', { name: 'Staff' })).not.toBeInTheDocument();
+    expect(within(nav).queryByText('Admin')).not.toBeInTheDocument();
+  });
 });
