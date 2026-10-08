@@ -2,13 +2,13 @@ import type { ComponentPropsWithRef } from 'react';
 import styles from './TextField.module.css';
 import { useFieldIds } from './use-field-ids';
 
-type TextFieldProps = ComponentPropsWithRef<'input'> & {
+type SelectProps = ComponentPropsWithRef<'select'> & {
   label: string;
   hint?: string;
   error?: string;
 };
 
-export function TextField({ label, hint, error, id, ...rest }: TextFieldProps) {
+export function Select({ label, hint, error, id, children, ...rest }: SelectProps) {
   const { inputId, hintId, errorId, describedBy } = useFieldIds(id, hint, error);
 
   return (
@@ -16,7 +16,9 @@ export function TextField({ label, hint, error, id, ...rest }: TextFieldProps) {
       <label htmlFor={inputId} className={styles.label}>
         {label}
       </label>
-      <input {...rest} id={inputId} className={styles.input} aria-invalid={error ? true : undefined} aria-describedby={describedBy} />
+      <select {...rest} id={inputId} className={styles.input} aria-invalid={error ? true : undefined} aria-describedby={describedBy}>
+        {children}
+      </select>
       {hint ? (
         <span id={hintId} className={styles.hint}>
           {hint}

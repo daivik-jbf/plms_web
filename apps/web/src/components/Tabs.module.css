@@ -1,0 +1,26 @@
+.list {
+  display: flex;
+  gap: var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tab {
+  min-height: 44px;
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.selected {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.panel {
+  padding-top: var(--space-4);
+}
