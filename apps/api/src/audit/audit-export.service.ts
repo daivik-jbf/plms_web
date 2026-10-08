@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, PayloadTooLargeException } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
 import type { Response } from 'express';
 import type { AuthUser } from '../auth/auth.types';
 import { ENV } from '../config/config.module';
@@ -45,7 +46,11 @@ export class AuditExportService {
 
   async writeCsv(admin: AuthUser, filters: AuditFilters, res: Response): Promise<void> {
     const max = this.env.AUDIT_EXPORT_MAX_ROWS;
-    const total = await this.queries.count(filters);
+    // One database-clock snapshot bounds the cap check, the recorded rowCount and the streamed rows, so they are the
+    // same set: the audit.exported entry below (and any later insert) has a later occurred_at and is not in the file.
+    const { rows } = await this.db.execute<{ t: string }>(sql`select clock_timestamp()::text as t`);
+    const until = rows[0]!.t;
+    const total = await this.queries.count(filters, until);
     if (total > max) {
       throw new PayloadTooLargeException(`Too many rows to export (limit ${max}). Narrow the filters.`);
     }
@@ -60,7 +65,7 @@ export class AuditExportService {
     res.setHeader('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.write(`${BOM}${csvRow([...COLUMNS])}`);
     try {
-      for await (const page of this.queries.pages(filters, CHUNK)) {
+      for await (const page of this.queries.pages(filters, CHUNK, until)) {
         res.write(page.map((view) => csvRow(toRow(view))).join(''));
       }
       res.end();

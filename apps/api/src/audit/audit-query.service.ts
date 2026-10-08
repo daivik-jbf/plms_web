@@ -108,20 +108,21 @@ export class AuditQueryService {
     };
   }
 
-  async count(filters: AuditFilters): Promise<number> {
+  // `until` is an internal snapshot bound (a database timestamp string), never exposed over HTTP.
+  async count(filters: AuditFilters, until?: string): Promise<number> {
     const [result] = await this.db
       .select({ total: count() })
       .from(auditLog)
       .leftJoin(actorUser, eq(actorUser.id, auditLog.actorId))
       .leftJoin(targetUser, and(eq(auditLog.targetType, 'user'), sql`${targetUser.id}::text = ${auditLog.targetId}`))
-      .where(and(...this.conditions(filters)));
+      .where(and(...this.conditions(filters, until)));
     return result?.total ?? 0;
   }
 
-  async *pages(filters: AuditFilters, size: number): AsyncGenerator<AuditEntryView[]> {
+  async *pages(filters: AuditFilters, size: number, until?: string): AsyncGenerator<AuditEntryView[]> {
     let cursor: AuditCursor | undefined;
     for (;;) {
-      const rows = await this.fetch(filters, size, cursor);
+      const rows = await this.fetch(filters, size, cursor, until);
       if (rows.length === 0) return;
       yield rows.map(toView);
       const last = rows[rows.length - 1]!;
@@ -130,9 +131,9 @@ export class AuditQueryService {
     }
   }
 
-  private async fetch(filters: AuditFilters, limit: number, cursor?: AuditCursor): Promise<Row[]> {
+  private async fetch(filters: AuditFilters, limit: number, cursor?: AuditCursor, until?: string): Promise<Row[]> {
     try {
-      return await this.query(filters, limit, cursor);
+      return await this.query(filters, limit, cursor, until);
     } catch (error) {
       // Belt and braces: the cursor is validated on decode, but never let Postgres reject it as a 500.
       if (cursor && isInvalidInputValue(error)) throw invalidCursor();
@@ -140,7 +141,7 @@ export class AuditQueryService {
     }
   }
 
-  private query(filters: AuditFilters, limit: number, cursor?: AuditCursor): Promise<Row[]> {
+  private query(filters: AuditFilters, limit: number, cursor?: AuditCursor, until?: string): Promise<Row[]> {
     return this.db
       .select({
         entry: auditLog,
@@ -153,7 +154,7 @@ export class AuditQueryService {
       .leftJoin(targetUser, and(eq(auditLog.targetType, 'user'), sql`${targetUser.id}::text = ${auditLog.targetId}`))
       .where(
         and(
-          ...this.conditions(filters),
+          ...this.conditions(filters, until),
           cursor ? sql`(${auditLog.occurredAt}, ${auditLog.id}) < (${cursor.t}::timestamptz, ${cursor.id}::uuid)` : undefined,
         ),
       )
@@ -162,7 +163,7 @@ export class AuditQueryService {
       .limit(limit);
   }
 
-  private conditions(filters: AuditFilters): (SQL | undefined)[] {
+  private conditions(filters: AuditFilters, until?: string): (SQL | undefined)[] {
     const pattern = filters.q ? `%${escapeLike(filters.q)}%` : undefined;
     const showPlayback = filters.includePlayback || filters.category === 'playback';
     return [
@@ -176,6 +177,7 @@ export class AuditQueryService {
       filters.category ? categoryCondition(filters.category) : undefined,
       showPlayback ? undefined : not(categoryCondition('playback')),
       filters.action ? eq(auditLog.action, filters.action) : undefined,
+      until ? sql`${auditLog.occurredAt} <= ${until}::timestamptz` : undefined,
       filters.from ? gte(auditLog.occurredAt, new Date(filters.from)) : undefined,
       filters.to ? lte(auditLog.occurredAt, new Date(filters.to)) : undefined,
       pattern

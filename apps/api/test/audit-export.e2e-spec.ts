@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import request from 'supertest';
 import type { Database } from '../src/db/db.module';
 import { auditLog, type User } from '../src/db/schema';
@@ -28,10 +28,10 @@ describe('audit export and page-opened marker', () => {
   afterAll(() => app.close());
 
   const http = () => request(app.getHttpServer());
-  const exportCsv = (query: string) =>
+  const exportAs = (session: Session, query: string) =>
     http()
       .get(`/api/audit/export.csv?${query}`)
-      .set(...bearer(admin))
+      .set(...bearer(session))
       .buffer(true)
       .parse((res, callback) => {
         let data = '';
@@ -39,6 +39,7 @@ describe('audit export and page-opened marker', () => {
         res.on('data', (chunk: string) => (data += chunk));
         res.on('end', () => callback(null, data));
       });
+  const exportCsv = (query: string) => exportAs(admin, query);
 
   it('is Admin-only for both endpoints', async () => {
     await http().post('/api/audit/opened').expect(401);
@@ -122,6 +123,64 @@ describe('audit export and page-opened marker', () => {
       const entry = rows.at(-1)!;
       expect(entry.metadata).toMatchObject({ rowCount: 2, filters: { actorId } });
       expect(JSON.stringify(entry)).not.toContain(secretLabel);
+    });
+
+    describe('snapshot consistency', () => {
+      const dataRows = (rows: string[][]) => rows.slice(1);
+      const newestExport = async (actorId: string) =>
+        (
+          await db
+            .select()
+            .from(auditLog)
+            .where(and(eq(auditLog.actorId, actorId), eq(auditLog.action, 'audit.exported')))
+            .orderBy(desc(auditLog.occurredAt))
+            .limit(1)
+        )[0]!;
+
+      it('exports exactly the rows it counted: the audit.exported entry it records is not in its own file', async () => {
+        const own = await createUser(db, { role: 'admin' });
+        const ownSession = await loginMobile(app, own.email);
+        await seedAudit(db, [
+          { actorId: own.id, occurredAt: new Date('2026-03-01T10:00:00Z') },
+          { actorId: own.id, occurredAt: new Date('2026-03-01T09:00:00Z') },
+        ]);
+        const exportedRows = (rows: string[][]) => dataRows(rows).filter((row) => row[3] === 'audit.exported').length;
+
+        const first = parseCsv((await exportAs(ownSession, `actorId=${own.id}`).expect(200)).body);
+        expect(dataRows(first)).toHaveLength(((await newestExport(own.id)).metadata as { rowCount: number }).rowCount);
+        expect(exportedRows(first)).toBe(0);
+
+        const second = parseCsv((await exportAs(ownSession, `actorId=${own.id}`).expect(200)).body);
+        const entry = await newestExport(own.id);
+        expect(entry.metadata).toMatchObject({ filters: { actorId: own.id } });
+        expect(dataRows(second)).toHaveLength((entry.metadata as { rowCount: number }).rowCount);
+        // Only the first export's entry is in the second file, not the second export's own entry.
+        expect(exportedRows(second)).toBe(1);
+        expect(dataRows(second)).toHaveLength(dataRows(first).length + 1);
+      });
+
+      it('exports exactly the cap when the filter would also match the audit entry of the export itself', async () => {
+        const own = await createUser(db, { role: 'admin' });
+        const ownSession = await loginMobile(app, own.email);
+        await seedAudit(
+          db,
+          Array.from({ length: 5 }, (_, index) => ({
+            actorId: own.id,
+            action: 'audit.exported',
+            occurredAt: new Date(Date.UTC(2026, 2, 2, 10, index)),
+          })),
+        );
+        const query = `actorId=${own.id}&action=audit.exported`;
+        const file = await exportAs(ownSession, query).expect(200);
+        expect(dataRows(parseCsv(file.body))).toHaveLength(5);
+        expect((await newestExport(own.id)).metadata).toMatchObject({ rowCount: 5 });
+
+        // The first export's own entry now matches the filter (6 rows), so an unbounded repeat is honestly over the cap...
+        await http().get(`/api/audit/export.csv?${query}`).set(...bearer(ownSession)).expect(413);
+        // ...while a repeat bounded to the original five rows still exports exactly the cap.
+        const bounded = await exportAs(ownSession, `${query}&to=2026-03-03T00:00:00Z`).expect(200);
+        expect(dataRows(parseCsv(bounded.body))).toHaveLength(5);
+      });
     });
 
     it('rejects invalid filters before streaming anything', async () => {
