@@ -80,6 +80,22 @@ describe('presentAudit', () => {
     ['audit.viewed', {}, 'Viewed audit log', 'neutral', 'Anita Rao opened the audit log'],
     ['audit.exported', { metadata: { rowCount: 42 } }, 'Exported audit log', 'neutral', 'Anita Rao exported 42 audit log rows'],
     ['audit.exported', { metadata: { rowCount: 1 } }, 'Exported audit log', 'neutral', 'Anita Rao exported 1 audit log row'],
+    ['audit.exported', { metadata: { filters: {} } }, 'Exported audit log', 'neutral', 'Anita Rao exported audit log rows'],
+    [
+      'auth.login.failed',
+      { actorName: null, actorLabel: 'x@jbf.org', metadata: { reason: 'cosmic_rays' } },
+      'Sign-in failed',
+      'warning',
+      'Failed sign-in for x@jbf.org',
+    ],
+    [
+      'auth.login.failed',
+      { actorName: null, actorLabel: 'x@jbf.org', metadata: { locked: true } },
+      'Sign-in failed',
+      'warning',
+      'Failed sign-in for x@jbf.org',
+    ],
+    ['invite.created', { targetName: null, metadata: {} }, 'Invite sent', 'change', 'Anita Rao invited ben@jbf.org as unknown'],
   ] as const)('%s %j', (action, overrides, label, tone, summary) => {
     const result = present({ action, ...overrides } as Partial<PresentableEntry>);
     expect(result).toEqual({ label, tone, category: 'accounts', summary });
@@ -117,6 +133,23 @@ describe('presentAudit', () => {
       summary: 'Anita Rao performed content.created',
     });
     expect(present({ action: 'playback.played' }).category).toBe('playback');
+  });
+});
+
+describe('presentAudit with Object member names', () => {
+  const inherited = ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf'];
+
+  it.each(inherited)('uses the generic fallback for the action %j', (action) => {
+    expect(present({ action })).toEqual({
+      label: action,
+      tone: 'neutral',
+      category: 'accounts',
+      summary: `Anita Rao performed ${action}`,
+    });
+  });
+
+  it.each(inherited)('shows no reason text for the failure reason %j', (reason) => {
+    expect(present({ action: 'auth.login.failed', metadata: { reason, locked: true } }).summary).toBe('Failed sign-in for Anita Rao');
   });
 });
 

@@ -15,9 +15,9 @@ describe('csvCell', () => {
     expect(csvCell('line1\r\nline2')).toBe('"line1\r\nline2"');
   });
 
-  it.each(['=1+1', '+1+1', '-2+3', '@SUM(1)', '\tcmd', '\rcmd'])('neutralizes the formula-leading cell %j with a leading apostrophe', (value) => {
+  it.each(['=1+1', '+1+1', '-2+3', '@SUM(1)', '\tcmd', '\rcmd', '\ncmd'])('neutralizes the formula-leading cell %j with a leading apostrophe', (value) => {
     expect(csvCell(value).startsWith("'") || csvCell(value).startsWith('"\'')).toBe(true);
-    expect(csvCell(value)).not.toMatch(/^"?[=+\-@\t\r]/);
+    expect(csvCell(value)).not.toMatch(/^"?[=+\-@\t\r\n]/);
   });
 
   it('neutralizes first and then quotes', () => {

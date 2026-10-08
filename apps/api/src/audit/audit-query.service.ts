@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, eq, gte, ilike, like, lte, not, or, type SQL, sql } from 'drizzle-orm';
+import { and, count, eq, ilike, like, not, or, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { DB, type Database } from '../db/db.module';
 import { type AuditChanges, auditLog, type Role, users } from '../db/schema';
@@ -147,7 +147,8 @@ export class AuditQueryService {
         entry: auditLog,
         actorName: actorUser.name,
         targetName: targetUser.name,
-        occurredAtText: sql<string>`${auditLog.occurredAt}::text`,
+        // A fixed UTC format, independent of the session's TimeZone and DateStyle; the cursor regex accepts it.
+        occurredAtText: sql<string>`to_char(${auditLog.occurredAt} at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00'`,
       })
       .from(auditLog)
       .leftJoin(actorUser, eq(actorUser.id, auditLog.actorId))
@@ -178,8 +179,9 @@ export class AuditQueryService {
       showPlayback ? undefined : not(categoryCondition('playback')),
       filters.action ? eq(auditLog.action, filters.action) : undefined,
       until ? sql`${auditLog.occurredAt} <= ${until}::timestamptz` : undefined,
-      filters.from ? gte(auditLog.occurredAt, new Date(filters.from)) : undefined,
-      filters.to ? lte(auditLog.occurredAt, new Date(filters.to)) : undefined,
+      // Bound as text so microseconds survive (a JS Date would truncate to milliseconds).
+      filters.from ? sql`${auditLog.occurredAt} >= ${filters.from}::timestamptz` : undefined,
+      filters.to ? sql`${auditLog.occurredAt} <= ${filters.to}::timestamptz` : undefined,
       pattern
         ? or(
             ilike(auditLog.actorLabel, pattern),

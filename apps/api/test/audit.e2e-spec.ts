@@ -64,6 +64,10 @@ describe('GET /api/audit', () => {
 
       expect(pages).toBe(3);
       expect(seen).toEqual(expectedOrder);
+      // The cursor carries a fixed UTC text with microseconds, whatever the session's TimeZone is.
+      const firstPage = await get(`?actorId=${actorId}&limit=3`).expect(200);
+      const decoded = JSON.parse(Buffer.from(firstPage.body.nextCursor, 'base64url').toString('utf8')) as { t: string };
+      expect(decoded.t).toBe('2026-01-01 10:00:00.000200+00');
       expect(new Set(seen).size).toBe(7);
 
       // One row per page forces every page boundary, including those inside tied timestamps, to rely on the id tie-break.
@@ -169,6 +173,47 @@ describe('GET /api/audit', () => {
       await seedAuditAt(db, '2026-03-03 18:00:00+00', { actorId });
       const res = await get(`?actorId=${actorId}&from=2026-03-02T00:00:00.000Z&to=2026-03-02T23:59:59.999Z`).expect(200);
       expect(ids(res.body)).toEqual([middle]);
+    });
+
+    it('includes rows exactly on the from and to bounds, to the microsecond, and excludes a row 1 microsecond past to', async () => {
+      const actorId = randomUUID();
+      const atFrom = await seedAuditAt(db, '2026-03-05 10:00:00.000001+00', { actorId });
+      const atTo = await seedAuditAt(db, '2026-03-05 10:00:00.123456+00', { actorId });
+      const beyond = await seedAuditAt(db, '2026-03-05 10:00:00.123457+00', { actorId });
+      const before = await seedAuditAt(db, '2026-03-05 10:00:00+00', { actorId });
+      const res = await get(`?actorId=${actorId}&from=2026-03-05T10:00:00.000001Z&to=2026-03-05T10:00:00.123456Z`).expect(200);
+      expect(ids(res.body)).toEqual([atTo, atFrom]);
+      expect(ids(res.body)).not.toContain(beyond);
+      expect(ids(res.body)).not.toContain(before);
+      // The same instant written with another offset is the same bound.
+      const offset = await get(`?actorId=${actorId}&to=${encodeURIComponent('2026-03-05T15:30:00.123456+05:30')}`).expect(200);
+      expect(ids(offset.body)).toEqual([atTo, atFrom, before]);
+    });
+
+    it('accepts uppercase ids for actorId and involving', async () => {
+      const person = randomUUID();
+      const other = randomUUID();
+      const [byPerson, toPerson] = await seedAudit(db, [
+        { actorId: person, action: 'user.deactivated', targetType: 'user', targetId: other },
+        { actorId: other, action: 'user.reactivated', targetType: 'user', targetId: person },
+      ]);
+      expect(new Set(ids((await get(`?involving=${person.toUpperCase()}`).expect(200)).body))).toEqual(new Set([byPerson, toPerson]));
+      expect(ids((await get(`?actorId=${person.toUpperCase()}`).expect(200)).body)).toEqual([byPerson]);
+    });
+
+    it('treats a backslash in the search literally', async () => {
+      const tag = randomUUID();
+      const [slashed, plain] = await seedAudit(db, [{ actorLabel: `back\\slash-${tag}` }, { actorLabel: `backslash-${tag}` }]);
+      expect(ids((await get(`?q=${encodeURIComponent(`back\\slash-${tag}`)}`).expect(200)).body)).toEqual([slashed]);
+      expect(ids((await get(`?q=${encodeURIComponent(`backslash-${tag}`)}`).expect(200)).body)).toEqual([plain]);
+    });
+
+    it('rejects year 0000 in from and to with a 400, not a 500', async () => {
+      for (const field of ['from', 'to']) {
+        const res = await get(`?${field}=0000-01-01T00:00:00Z`).expect(400);
+        expect(res.body.fieldErrors[field]).toBeDefined();
+      }
+      await get('?from=0001-01-01T00:00:00Z&to=9999-12-31T23:59:59.999999Z').expect(200);
     });
 
     it('searches labels, action and names case-insensitively, and treats % and _ literally', async () => {

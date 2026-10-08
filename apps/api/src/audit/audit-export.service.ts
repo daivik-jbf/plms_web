@@ -7,6 +7,7 @@ import type { Env } from '../config/env';
 import { DB, type Database } from '../db/db.module';
 import { type AuditEntryView, AuditQueryService } from './audit-query.service';
 import { csvRow } from './csv';
+import { writeChunk } from './write-chunk';
 import type { AuditFilters } from './audit.schemas';
 import { AuditService } from './audit.service';
 
@@ -15,7 +16,10 @@ const COLUMNS = [
 ];
 const CHUNK = 1000;
 // Lets Excel detect UTF-8.
-const BOM = '﻿';
+const BOM = '\uFEFF';
+
+export const tooManyRowsMessage = (max: number): string =>
+  `Too many rows to export (limit ${max.toLocaleString('en-US')}). Narrow the filters.`;
 
 const toRow = (view: AuditEntryView): unknown[] => [
   view.occurredAt.toISOString(),
@@ -52,7 +56,7 @@ export class AuditExportService {
     const until = rows[0]!.t;
     const total = await this.queries.count(filters, until);
     if (total > max) {
-      throw new PayloadTooLargeException(`Too many rows to export (limit ${max}). Narrow the filters.`);
+      throw new PayloadTooLargeException(tooManyRowsMessage(max));
     }
     await this.audit.record(this.db, {
       actor: { id: admin.id, role: admin.role, label: admin.email },
@@ -63,10 +67,11 @@ export class AuditExportService {
     res.status(200);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.write(`${BOM}${csvRow([...COLUMNS])}`);
     try {
+      // writeChunk resolves false once the client has gone: stop quietly, that is not a failure of the export.
+      if (!(await writeChunk(res, `${BOM}${csvRow([...COLUMNS])}`))) return;
       for await (const page of this.queries.pages(filters, CHUNK, until)) {
-        res.write(page.map((view) => csvRow(toRow(view))).join(''));
+        if (!(await writeChunk(res, page.map((view) => csvRow(toRow(view))).join('')))) return;
       }
       res.end();
     } catch (error) {

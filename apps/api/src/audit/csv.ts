@@ -1,6 +1,6 @@
 // Cells that start with these characters are executed as formulas by spreadsheet programs. Audit labels can
 // contain attacker-typed text (failed sign-ins store the typed email), so such cells get a leading apostrophe.
-const FORMULA_START = /^[=+\-@\t\r]/;
+const FORMULA_START = /^[=+\-@\t\r\n]/;
 
 export function csvCell(value: unknown): string {
   if (value === null || value === undefined) return '';

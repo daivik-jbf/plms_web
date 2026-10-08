@@ -1,6 +1,6 @@
 // Minimal RFC 4180 parser for tests: returns rows of cells; handles quoted cells, doubled quotes and CRLF.
 export function parseCsv(text: string): string[][] {
-  const body = text.startsWith('﻿') ? text.slice(1) : text;
+  const body = text.startsWith('\uFEFF') ? text.slice(1) : text;
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';

@@ -64,7 +64,9 @@ const FAILURE_REASONS: Record<string, string> = {
 
 function failedSignIn({ entry }: Context): string {
   const who = entry.actorName ?? entry.actorLabel ?? 'an unknown email';
-  const reason = typeof entry.metadata?.reason === 'string' ? FAILURE_REASONS[entry.metadata.reason] : undefined;
+  const code = entry.metadata?.reason;
+  // Own keys only: a stored reason such as 'constructor' must not pick up an inherited Object member.
+  const reason = typeof code === 'string' && Object.hasOwn(FAILURE_REASONS, code) ? FAILURE_REASONS[code] : undefined;
   if (!reason) return `Failed sign-in for ${who}`;
   const lockedNow = entry.metadata?.locked === true ? ', account now locked' : '';
   return `Failed sign-in for ${who} (${reason}${lockedNow})`;
@@ -160,7 +162,8 @@ export function presentAudit(entry: PresentableEntry): Presentation {
     entry,
   };
   const category = categoryOf(entry.action);
-  const spec = (SPECS as Record<string, ActionSpec | undefined>)[entry.action];
+  // Own keys only: an action such as 'toString' or '__proto__' must fall back, not pick up an inherited Object member.
+  const spec = Object.hasOwn(SPECS, entry.action) ? (SPECS as Record<string, ActionSpec>)[entry.action] : undefined;
   if (!spec) {
     return { label: entry.action, tone: 'neutral', category, summary: `${context.actor} performed ${entry.action}` };
   }

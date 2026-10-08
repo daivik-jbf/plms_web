@@ -68,7 +68,7 @@ describe('audit export and page-opened marker', () => {
       const res = await exportCsv(`actorId=${actorId}`).expect(200);
       expect(res.headers['content-type']).toMatch(/^text\/csv/);
       expect(res.headers['content-disposition']).toMatch(/^attachment; filename="audit-log-\d{4}-\d{2}-\d{2}\.csv"$/);
-      expect(res.body.startsWith('﻿')).toBe(true);
+      expect((res.body as string).charCodeAt(0)).toBe(0xfeff);
       const rows = parseCsv(res.body);
       expect(rows[0]).toEqual([
         'Time (UTC)', 'Person', 'Role', 'Action', 'Label', 'Target type', 'Target', 'Source', 'IP', 'App version', 'Request id', 'Summary', 'Changes',
@@ -119,9 +119,13 @@ describe('audit export and page-opened marker', () => {
       const secretLabel = `secret-label-${randomUUID()}`;
       await seedAudit(db, [{ actorId, actorLabel: secretLabel }, { actorId, actorLabel: secretLabel }]);
       await exportCsv(`actorId=${actorId}`).expect(200);
-      const rows = await db.select().from(auditLog).where(and(eq(auditLog.actorId, adminUser.id), eq(auditLog.action, 'audit.exported')));
-      const entry = rows.at(-1)!;
-      expect(entry.metadata).toMatchObject({ rowCount: 2, filters: { actorId } });
+      const [entry] = await db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.actorId, adminUser.id), eq(auditLog.action, 'audit.exported')))
+        .orderBy(desc(auditLog.occurredAt))
+        .limit(1);
+      expect(entry!.metadata).toMatchObject({ rowCount: 2, filters: { actorId } });
       expect(JSON.stringify(entry)).not.toContain(secretLabel);
     });
 
