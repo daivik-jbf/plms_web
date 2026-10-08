@@ -27,6 +27,16 @@ describe('audit filters', () => {
     expect(auditQueryString({ from: 'yesterday', to: '2026-13-45' })).toBe('');
   });
 
+  it('ignores impossible dates instead of rolling them over into the next month', () => {
+    expect(auditQueryString({ from: '2026-02-31', to: '2026-04-31' })).toBe('');
+    expect(new URLSearchParams(auditQueryString({ from: '2028-02-29' }).slice(1)).get('from')).not.toBeNull();
+  });
+
+  it('ignores years below 1000 (a date input mid-way through typing the year)', () => {
+    expect(auditQueryString({ from: '0002-03-02', to: '0999-12-31' })).toBe('');
+    expect(new URLSearchParams(auditQueryString({ from: '1000-01-01' }).slice(1)).get('from')).not.toBeNull();
+  });
+
   it('returns an empty string when there is nothing to send', () => {
     expect(auditQueryString({})).toBe('');
   });

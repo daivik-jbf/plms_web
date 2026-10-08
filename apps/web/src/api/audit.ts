@@ -59,10 +59,15 @@ export function filtersToParams(filters: AuditFilters): URLSearchParams {
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
+// Only real calendar dates count: 2026-02-31 is ignored rather than rolled over into March. Years below 1000 are
+// ignored too: Chrome's date input emits values such as 0002-03-02 while the year is still being typed.
 function instant(date: string | undefined, time: string): string | undefined {
   if (!date || !DATE_ONLY.test(date)) return undefined;
+  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
+  if (year < 1000) return undefined;
   const parsed = new Date(`${date}T${time}`);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+  const sameDay = parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+  return Number.isNaN(parsed.getTime()) || !sameDay ? undefined : parsed.toISOString();
 }
 
 export function auditQueryString(filters: AuditFilters, extra: { limit?: number; cursor?: string } = {}): string {

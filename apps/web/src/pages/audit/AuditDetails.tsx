@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import type { AuditEntry } from '../../api/audit';
+import { type AuditEntry, filtersToParams } from '../../api/audit';
 import { Table } from '../../components/Table';
 import { formatDateTime, formatExactUtc, formatValue } from '../../lib/format';
 import styles from './AuditPage.module.css';
@@ -9,7 +9,8 @@ const roleLabel = (role: string | null): string => (role === 'admin' ? ' (Admin)
 
 interface AuditDetailsProps {
   entry: AuditEntry;
-  onNavigate: () => void;
+  // Called with the search part of the link's address (without the '?').
+  onNavigate: (search: string) => void;
 }
 
 export function AuditDetails({ entry, onNavigate }: AuditDetailsProps) {
@@ -17,6 +18,7 @@ export function AuditDetails({ entry, onNavigate }: AuditDetailsProps) {
   const personId = entry.actor?.id ?? (entry.target?.type === 'user' ? entry.target.id : null);
   const personName = entry.actor?.id ? actorName : (entry.target?.name ?? entry.target?.label ?? 'this person');
   const changes = entry.changes ? Object.entries(entry.changes) : [];
+  const involving = personId ? filtersToParams({ involving: personId }).toString() : null;
 
   return (
     <>
@@ -84,9 +86,11 @@ export function AuditDetails({ entry, onNavigate }: AuditDetailsProps) {
 
       {entry.metadata ? <pre className={styles.metadata}>{JSON.stringify(entry.metadata, null, 2)}</pre> : null}
 
-      {personId ? (
+      {involving ? (
         <p>
-          <Link to={`/audit?involving=${personId}`} onClick={onNavigate}>{`View all of ${personName}'s activity`}</Link>
+          <Link to={{ pathname: '/audit', search: `?${involving}` }} onClick={() => onNavigate(involving)}>
+            {`View all of ${personName}'s activity`}
+          </Link>
         </p>
       ) : null}
     </>

@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -71,13 +72,14 @@ function startServer(
     text: 'Time (UTC)\r\n',
     headers: { 'Content-Disposition': 'attachment; filename="audit-log-2026-10-08.csv"' },
   },
+  peopleResponse: MockResponse = { body: people },
 ) {
   const calls: { method: string; url: URL }[] = [];
   mockSession(ADMIN, (rawUrl, init) => {
     const url = new URL(rawUrl, 'http://localhost');
     const method = init.method ?? 'GET';
     calls.push({ method, url });
-    if (method === 'GET' && url.pathname === '/api/users') return { body: people };
+    if (method === 'GET' && url.pathname === '/api/users') return peopleResponse;
     if (method === 'POST' && url.pathname === '/api/audit/opened') return { status: 204 };
     if (method === 'GET' && url.pathname === '/api/audit') {
       if (typeof pages === 'function') return pages(url);
@@ -101,6 +103,9 @@ function renderAudit(route = '/audit') {
     route,
   );
 }
+
+const heading = () => screen.getByRole('heading', { level: 1, name: 'Audit log' });
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 describe('AuditPage', () => {
   beforeEach(() => {
@@ -141,6 +146,21 @@ describe('AuditPage', () => {
       await screen.findByRole('table', { name: 'Audit log' });
       await userEvent.selectOptions(screen.getByLabelText('Category'), 'accounts');
       await waitFor(() => expect(server.auditCalls().length).toBeGreaterThan(1));
+      expect(server.opened()).toBe(1);
+    });
+
+    it('records exactly one "opened" marker under React StrictMode', async () => {
+      const server = startServer({ '': { items: [entry()], nextCursor: null } });
+      renderWithSession(
+        <StrictMode>
+          <Routes>
+            <Route path="/audit" element={<AuditPage />} />
+          </Routes>
+        </StrictMode>,
+        '/audit',
+      );
+      await screen.findByRole('table', { name: 'Audit log' });
+      await settle();
       expect(server.opened()).toBe(1);
     });
 
@@ -215,8 +235,43 @@ describe('AuditPage', () => {
       startServer({});
       renderAudit('/audit?q=zzz');
       expect(await screen.findByText('No activity matches these filters')).toBeInTheDocument();
+      expect(screen.getByLabelText('Search')).toHaveValue('zzz');
       await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
       await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/audit$/));
+      // The button goes away with the empty state, so focus moves to the heading rather than the page body.
+      await waitFor(() => expect(heading()).toHaveFocus());
+      expect(screen.getByLabelText('Search')).toHaveValue('');
+    });
+
+    it('does not offer Clear filters for unknown keys in the address', async () => {
+      startServer({});
+      renderAudit('/audit?junk=1');
+      expect(await screen.findByText('No activity matches these filters')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+      expect(screen.getByText('Activity appears here as people use the system.')).toBeInTheDocument();
+    });
+
+    it('shows only the result of the last of two quick filter changes', async () => {
+      let releaseContent: (response: MockResponse) => void = () => undefined;
+      const held = new Promise<MockResponse>((resolve) => {
+        releaseContent = resolve;
+      });
+      startServer((url) => {
+        const category = url.searchParams.get('category');
+        if (category === 'content') return held;
+        if (category === 'files') return { body: { items: [entry({ id: 'f1', summary: 'Files row' })], nextCursor: null } };
+        return { body: { items: [entry()], nextCursor: null } };
+      });
+      renderAudit();
+      await screen.findByRole('table', { name: 'Audit log' });
+      await userEvent.selectOptions(screen.getByLabelText('Category'), 'content');
+      await userEvent.selectOptions(screen.getByLabelText('Category'), 'files');
+      expect(await screen.findByText('Files row')).toBeInTheDocument();
+      releaseContent({ body: { items: [entry({ id: 'c1', summary: 'Content row' })], nextCursor: null } });
+      await settle();
+      expect(screen.getByText('Files row')).toBeInTheDocument();
+      expect(screen.queryByText('Content row')).not.toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent('/audit?category=files');
     });
 
     it('shows a loading skeleton, then an error with Retry', async () => {
@@ -227,13 +282,32 @@ describe('AuditPage', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
       await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(await screen.findByRole('table', { name: 'Audit log' })).toBeInTheDocument();
+      // Retry disappears with the error, so focus moves to the heading.
+      await waitFor(() => expect(heading()).toHaveFocus());
     });
 
-    it('explains a rejected filter from a hand-edited address and offers to clear it', async () => {
+    it('explains a rejected filter from a hand-edited address in plain words and offers to clear it', async () => {
       startServer(() => ({ status: 400, body: { message: 'Validation failed', fieldErrors: { involving: ['Invalid UUID'] } } }));
       renderAudit('/audit?involving=not-a-uuid');
-      expect(await screen.findByRole('alert')).toHaveTextContent('Validation failed');
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Some filters in this address are not valid. Clear filters to start again.');
+      expect(alert).not.toHaveTextContent('Validation failed');
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
+    });
+
+    it('explains a rejected date the same way', async () => {
+      startServer(() => ({ status: 400, body: { message: 'Validation failed', fieldErrors: { from: ['Invalid ISO datetime'] } } }));
+      renderAudit('/audit?from=2026-03-02');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Some filters in this address are not valid. Clear filters to start again.');
+      await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+      await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/audit$/));
+    });
+
+    it('keeps the server\'s message for a 400 that does not name a filter', async () => {
+      startServer(() => ({ status: 400, body: { message: 'Something specific went wrong', fieldErrors: { other: ['x'] } } }));
+      renderAudit('/audit?category=accounts');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Something specific went wrong');
     });
 
     it('renders hostile labels as inert text, never as markup', async () => {
@@ -267,6 +341,55 @@ describe('AuditPage', () => {
       expect(screen.getByTestId('location')).toHaveTextContent('from=2026-03-02');
     });
 
+    it('keeps keyboard focus in the search box after searching with Enter', async () => {
+      const server = startServer({ '': { items: [entry()], nextCursor: null } });
+      renderAudit();
+      await screen.findByRole('table', { name: 'Audit log' });
+      const search = screen.getByLabelText('Search');
+      await userEvent.click(search);
+      await userEvent.keyboard('ben{Enter}');
+      await waitFor(() => expect(server.auditCalls().at(-1)!.url.searchParams.get('q')).toBe('ben'));
+      await screen.findByRole('table', { name: 'Audit log' });
+      expect(screen.getByLabelText('Search')).toBe(search);
+      expect(search).toHaveFocus();
+      expect(search).toHaveValue('ben');
+    });
+
+    it('keeps keyboard focus on the Search button after searching with it', async () => {
+      const server = startServer({ '': { items: [entry()], nextCursor: null } });
+      renderAudit();
+      await screen.findByRole('table', { name: 'Audit log' });
+      await userEvent.type(screen.getByLabelText('Search'), 'ben');
+      const button = screen.getByRole('button', { name: 'Search' });
+      button.focus();
+      await userEvent.keyboard('{Enter}');
+      await waitFor(() => expect(server.auditCalls().at(-1)!.url.searchParams.get('q')).toBe('ben'));
+      await screen.findByRole('table', { name: 'Audit log' });
+      expect(button).toHaveFocus();
+    });
+
+    it('shows "Unknown person" when the address names someone who is not in the people list', async () => {
+      startServer({ '': { items: [entry()], nextCursor: null } });
+      renderAudit('/audit?actorId=gone-1');
+      await screen.findByRole('table', { name: 'Audit log' });
+      const select = screen.getByLabelText('Person');
+      await waitFor(() => expect(within(select).getByRole('option', { name: 'Ben Okoye' })).toBeInTheDocument());
+      expect(select).toHaveValue('gone-1');
+      expect(within(select).getByRole('option', { name: 'Unknown person' })).toHaveProperty('selected', true);
+    });
+
+    it('still works when the people list fails: the chip says "this person" and the select is not "Anyone"', async () => {
+      const server = startServer({ '': { items: [entry()], nextCursor: null } }, undefined, { status: 500, body: {} });
+      renderAudit('/audit?involving=staff-1&actorId=staff-1');
+      await screen.findByRole('table', { name: 'Audit log' });
+      await waitFor(() => expect(server.calls.some((c) => c.url.pathname === '/api/users')).toBe(true));
+      await settle();
+      expect(screen.getByText('Activity of this person')).toBeInTheDocument();
+      expect(screen.getByLabelText('Person')).toHaveValue('staff-1');
+      expect(within(screen.getByLabelText('Person')).getByRole('option', { name: 'Unknown person' })).toHaveProperty('selected', true);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('searches only when submitted, not on every keystroke', async () => {
       const server = startServer({ '': { items: [entry()], nextCursor: null } });
       renderAudit();
@@ -286,6 +409,8 @@ describe('AuditPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Remove filter: Activity of Ben Okoye' }));
       await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/audit$/));
       await waitFor(() => expect(server.auditCalls().at(-1)!.url.searchParams.get('involving')).toBeNull());
+      // The chip's button is gone, so focus moves to the heading.
+      await waitFor(() => expect(heading()).toHaveFocus());
     });
   });
 
@@ -336,6 +461,16 @@ describe('AuditPage', () => {
       await userEvent.click(link);
       await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/audit?involving=admin-1'));
       expect(screen.queryByRole('dialog', { name: 'Role changed' })).not.toBeInTheDocument();
+      // The link and the row that opened the drawer are gone after the reload, so focus moves to the heading.
+      await waitFor(() => expect(heading()).toHaveFocus());
+    });
+
+    it('encodes the person id in the link', async () => {
+      startServer({ '': { items: [entry({ actor: { id: 'a b&c=d', role: 'admin', label: 'x@jbf.org', name: 'Odd Id' } })], nextCursor: null } });
+      renderAudit();
+      await userEvent.click(await screen.findByRole('button', { name: "Anita Rao changed Ben Okoye's role from Staff to Admin" }));
+      const link = within(screen.getByRole('dialog', { name: 'Role changed' })).getByRole('link', { name: "View all of Odd Id's activity" });
+      expect(link).toHaveAttribute('href', '/audit?involving=a+b%26c%3Dd');
     });
   });
 
@@ -354,11 +489,11 @@ describe('AuditPage', () => {
     it('shows the server\'s message when there are too many rows and lets the Admin try again', async () => {
       startServer(
         { '': { items: [entry()], nextCursor: null } },
-        { status: 413, body: { message: 'Too many rows to export (limit 50000). Narrow the filters.' } },
+        { status: 413, body: { message: 'Too many rows to export (limit 50,000). Narrow the filters.' } },
       );
       renderAudit();
       await userEvent.click(await screen.findByRole('button', { name: 'Export CSV' }));
-      expect(await screen.findByRole('alert')).toHaveTextContent('Too many rows to export (limit 50000). Narrow the filters.');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Too many rows to export (limit 50,000). Narrow the filters.');
       expect(saveBlob).not.toHaveBeenCalled();
       expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled();
     });

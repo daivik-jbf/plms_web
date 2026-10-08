@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import type { AuditFilters as Filters } from '../../api/audit';
 import type { Person } from '../../api/staff';
 import { Button } from '../../components/Button';
@@ -10,11 +10,15 @@ interface AuditFiltersProps {
   filters: Filters;
   people: Person[];
   personName?: string;
-  onChange: (filters: Filters) => void;
+  onChange: (filters: Filters, options?: { focusHeading?: boolean }) => void;
 }
 
 export function AuditFilterBar({ filters, people, personName, onChange }: AuditFiltersProps) {
   const [search, setSearch] = useState(filters.q ?? '');
+  const knownActor = !filters.actorId || people.some((person) => person.id === filters.actorId);
+
+  // Keeps the box in step with the address (Clear filters, Back/Forward) without remounting, which would drop focus.
+  useEffect(() => setSearch(filters.q ?? ''), [filters.q]);
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -30,7 +34,7 @@ export function AuditFilterBar({ filters, people, personName, onChange }: AuditF
             type="button"
             className={styles.chipRemove}
             aria-label={`Remove filter: Activity of ${personName ?? 'this person'}`}
-            onClick={() => onChange({ ...filters, involving: undefined })}
+            onClick={() => onChange({ ...filters, involving: undefined }, { focusHeading: true })}
           >
             ×
           </button>
@@ -39,6 +43,8 @@ export function AuditFilterBar({ filters, people, personName, onChange }: AuditF
       <div className={styles.filterRow}>
         <Select label="Person" value={filters.actorId ?? ''} onChange={(e) => onChange({ ...filters, actorId: e.target.value || undefined })}>
           <option value="">Anyone</option>
+          {/* A person from the address who is not in the list (or the list failed) must not read as "Anyone". */}
+          {knownActor ? null : <option value={filters.actorId}>Unknown person</option>}
           {people.map((person) => (
             <option key={person.id} value={person.id}>
               {person.name}
