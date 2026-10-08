@@ -6,6 +6,9 @@ interface DialogProps {
   onClose: () => void;
   title: string;
   side?: 'center' | 'right' | 'left';
+  // While true (a request is running) the user cannot dismiss the dialog: Esc, the back gesture, light dismiss,
+  // click-outside and the Close button are all ignored.
+  blocked?: boolean;
   children: ReactNode;
 }
 
@@ -13,7 +16,7 @@ interface DialogProps {
 const supportsClosedBy = typeof HTMLDialogElement !== 'undefined' && 'closedBy' in HTMLDialogElement.prototype;
 const LIGHT_DISMISS = { closedby: 'any' } as Record<string, string>;
 
-export function Dialog({ open, onClose, title, side = 'center', children }: DialogProps) {
+export function Dialog({ open, onClose, title, side = 'center', blocked = false, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -36,8 +39,17 @@ export function Dialog({ open, onClose, title, side = 'center', children }: Dial
     return () => dialog.removeEventListener('close', onClose);
   }, [onClose]);
 
+  // The native `cancel` event precedes Esc, the back gesture and light dismiss; cancelling it keeps the dialog open.
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog || !blocked) return;
+    const keepOpen = (event: Event) => event.preventDefault();
+    dialog.addEventListener('cancel', keepOpen);
+    return () => dialog.removeEventListener('cancel', keepOpen);
+  }, [blocked]);
+
   function onBackdropClick(event: MouseEvent<HTMLDialogElement>) {
-    if (supportsClosedBy || event.target !== event.currentTarget) return;
+    if (blocked || supportsClosedBy || event.target !== event.currentTarget) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const inside =
       rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
@@ -57,7 +69,7 @@ export function Dialog({ open, onClose, title, side = 'center', children }: Dial
           <h2 id={titleId} className={styles.title}>
             {title}
           </h2>
-          <button type="button" className={styles.close} aria-label="Close" onClick={() => ref.current?.close()}>
+          <button type="button" className={styles.close} aria-label="Close" disabled={blocked} onClick={() => ref.current?.close()}>
             ×
           </button>
         </header>

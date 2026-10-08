@@ -220,6 +220,53 @@ describe('StaffPage', () => {
       expect(server.count('POST /api/users/staff-1/deactivate')).toBe(1);
     });
 
+    it('cannot be dismissed while the request is running, and shows a late server error inside the dialog', async () => {
+      let release: (value: MockResponse) => void = () => undefined;
+      const gate = new Promise<MockResponse>((resolve) => {
+        release = resolve;
+      });
+      startServer({ 'POST /api/users/staff-1/deactivate': () => gate });
+      renderStaff();
+      await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Ben Okoye' }));
+      const dialog = screen.getByRole('dialog', { name: 'Deactivate Ben Okoye?' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
+      expect(fireEvent(dialog, new Event('cancel', { cancelable: true }))).toBe(false);
+      expect(screen.getByRole('dialog', { name: 'Deactivate Ben Okoye?' })).toBeInTheDocument();
+      release({ status: 409, body: { message: 'At least one active Admin is required.' } });
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('At least one active Admin is required.');
+    });
+
+    it('does not carry an error over into the next dialog', async () => {
+      startServer({ 'POST /api/users/staff-1/deactivate': { status: 409, body: { message: 'At least one active Admin is required.' } } });
+      renderStaff();
+      await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Ben Okoye' }));
+      const dialog = screen.getByRole('dialog', { name: 'Deactivate Ben Okoye?' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
+      expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Change role for Eli Brooks' }));
+      const roleDialog = screen.getByRole('dialog', { name: 'Change role' });
+      expect(within(roleDialog).queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('shows an error on the page when its dialog was closed before the server answered, and never in a later dialog', async () => {
+      let release: (value: MockResponse) => void = () => undefined;
+      const gate = new Promise<MockResponse>((resolve) => {
+        release = resolve;
+      });
+      startServer({ 'POST /api/users/staff-1/deactivate': () => gate });
+      renderStaff();
+      await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Ben Okoye' }));
+      const dialog = screen.getByRole('dialog', { name: 'Deactivate Ben Okoye?' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
+      fireEvent(dialog, new Event('close'));
+      expect(screen.queryByRole('dialog', { name: 'Deactivate Ben Okoye?' })).not.toBeInTheDocument();
+      release({ status: 409, body: { message: 'At least one active Admin is required.' } });
+      expect(await screen.findByRole('alert')).toHaveTextContent('At least one active Admin is required.');
+      await userEvent.click(screen.getByRole('button', { name: 'Change role for Eli Brooks' }));
+      expect(within(screen.getByRole('dialog', { name: 'Change role' })).queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('reactivates straight from the row', async () => {
       const server = startServer();
       renderStaff();

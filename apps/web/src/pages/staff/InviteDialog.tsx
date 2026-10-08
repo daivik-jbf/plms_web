@@ -16,14 +16,20 @@ interface InviteDialogProps {
 }
 
 export function InviteDialog({ open, onClose, onInvited }: InviteDialogProps) {
+  const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={open} onClose={onClose} title="Invite person">
-      <InviteForm onClose={onClose} onInvited={onInvited} />
+    <Dialog open={open} onClose={onClose} title="Invite person" blocked={busy}>
+      <InviteForm onClose={onClose} onInvited={onInvited} busy={busy} setBusy={setBusy} />
     </Dialog>
   );
 }
 
-function InviteForm({ onClose, onInvited }: Pick<InviteDialogProps, 'onClose' | 'onInvited'>) {
+function InviteForm({
+  onClose,
+  onInvited,
+  busy,
+  setBusy,
+}: Pick<InviteDialogProps, 'onClose' | 'onInvited'> & { busy: boolean; setBusy: (busy: boolean) => void }) {
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
@@ -32,7 +38,6 @@ function InviteForm({ onClose, onInvited }: Pick<InviteDialogProps, 'onClose' | 
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<'name' | 'email' | null>(null);
-  const [busy, setBusy] = useState(false);
 
   // Focus moves only after the error text has rendered so it is announced together with the field.
   useEffect(() => {

@@ -16,7 +16,7 @@ interface ChangeRoleDialogProps {
 
 export function ChangeRoleDialog({ person, busy, error, onSave, onClose }: ChangeRoleDialogProps) {
   return (
-    <Dialog open={person !== null} onClose={onClose} title="Change role">
+    <Dialog open={person !== null} onClose={onClose} title="Change role" blocked={busy}>
       {person ? <RoleForm person={person} busy={busy} error={error} onSave={onSave} onClose={onClose} /> : null}
     </Dialog>
   );

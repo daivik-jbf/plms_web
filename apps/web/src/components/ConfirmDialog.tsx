@@ -30,7 +30,7 @@ export function ConfirmDialog({
   children,
 }: ConfirmDialogProps) {
   return (
-    <Dialog open={open} onClose={onCancel} title={title}>
+    <Dialog open={open} onClose={onCancel} title={title} blocked={busy}>
       {error ? <Alert tone="error">{error}</Alert> : null}
       <p>{children}</p>
       <div className={styles.actions}>

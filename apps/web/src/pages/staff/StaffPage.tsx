@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError } from '../../api/client';
 import {
   cancelInvite,
@@ -49,6 +49,8 @@ export function StaffPage() {
   const [tab, setTab] = useState<'people' | 'invites'>('people');
   const [filter, setFilter] = useState('');
   const [dialog, setDialog] = useState<OpenDialog>(null);
+  // Always the dialog that is open right now, so a request that settles later can tell whether its dialog is still there.
+  const dialogRef = useRef<OpenDialog>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -68,26 +70,33 @@ export function StaffPage() {
     void load();
   }, [load]);
 
-  function closeDialog() {
-    setDialog(null);
+  // Opening or closing a dialog always starts without an error, so one never carries over to the next dialog.
+  function openDialog(next: OpenDialog) {
+    dialogRef.current = next;
+    setDialog(next);
     setDialogError(null);
+  }
+
+  function closeDialog() {
+    openDialog(null);
   }
 
   // Runs one action, reloads both lists, then closes the dialog; a failure is shown inside the dialog when one
   // is open, or on the page otherwise.
   async function perform(action: () => Promise<unknown>, success: string | null) {
-    const inDialog = dialog !== null;
+    const startedIn = dialogRef.current;
     setBusy(true);
     setNotice(null);
     setDialogError(null);
     try {
       await action();
       await load();
-      if (inDialog) closeDialog();
+      if (startedIn !== null && dialogRef.current === startedIn) closeDialog();
       if (success) setNotice({ tone: 'success', text: success });
     } catch (error) {
       const message = describeError(error);
-      if (inDialog) setDialogError(message);
+      // The failure belongs in the dialog only while that same dialog is still open; otherwise nobody would see it.
+      if (startedIn !== null && dialogRef.current === startedIn) setDialogError(message);
       else setNotice({ tone: 'error', text: message });
     } finally {
       setBusy(false);
@@ -111,7 +120,7 @@ export function StaffPage() {
     <>
       <div className={styles.header}>
         <h1>Staff</h1>
-        <Button onClick={() => setDialog({ kind: 'invite' })}>Invite person</Button>
+        <Button onClick={() => openDialog({ kind: 'invite' })}>Invite person</Button>
       </div>
 
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
@@ -151,8 +160,8 @@ export function StaffPage() {
                   people={visiblePeople}
                   selfId={selfId}
                   busy={busy}
-                  onChangeRole={(person) => setDialog({ kind: 'role', person })}
-                  onDeactivate={(person) => setDialog({ kind: 'deactivate', person })}
+                  onChangeRole={(person) => openDialog({ kind: 'role', person })}
+                  onDeactivate={(person) => openDialog({ kind: 'deactivate', person })}
                   onReactivate={(person) => void perform(() => reactivatePerson(person.id), `${person.name} was reactivated.`)}
                 />
               )
@@ -165,7 +174,7 @@ export function StaffPage() {
                 invites={visibleInvites}
                 busy={busy}
                 onResend={(invite) => void perform(() => resendInvite(invite.id), `Invite resent to ${invite.email}.`)}
-                onCancel={(invite) => setDialog({ kind: 'cancel', invite })}
+                onCancel={(invite) => openDialog({ kind: 'cancel', invite })}
               />
             )}
           </Tabs>

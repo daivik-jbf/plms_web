@@ -4,7 +4,15 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Dialog } from './Dialog';
 
-function Harness({ onClose = () => undefined, side }: { onClose?: () => void; side?: 'center' | 'right' | 'left' }) {
+function Harness({
+  onClose = () => undefined,
+  side,
+  blocked,
+}: {
+  onClose?: () => void;
+  side?: 'center' | 'right' | 'left';
+  blocked?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -19,6 +27,7 @@ function Harness({ onClose = () => undefined, side }: { onClose?: () => void; si
         }}
         title="Edit thing"
         side={side}
+        blocked={blocked}
       >
         <p>Inside the dialog</p>
         <input aria-label="First field" data-autofocus />
@@ -83,5 +92,33 @@ describe('Dialog', () => {
     render(<Harness side="right" />);
     await userEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(screen.getByRole('dialog', { name: 'Edit thing' })).toBeInTheDocument();
+  });
+
+  describe('while blocked', () => {
+    it('cancels the native cancel event (Esc, back gesture, light dismiss) so the dialog stays open', async () => {
+      const onClose = vi.fn();
+      render(<Harness blocked onClose={onClose} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+      const notPrevented = fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
+      expect(notPrevented).toBe(false);
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog', { name: 'Edit thing' })).toBeInTheDocument();
+    });
+
+    it('ignores a click outside the dialog box and disables the Close button', async () => {
+      const onClose = vi.fn();
+      render(<Harness blocked onClose={onClose} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+      fireEvent.click(screen.getByRole('dialog'), { clientX: 500, clientY: 500 });
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+    });
+  });
+
+  it('does not prevent the cancel event when not blocked', async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+    expect(fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }))).toBe(true);
+    expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled();
   });
 });
