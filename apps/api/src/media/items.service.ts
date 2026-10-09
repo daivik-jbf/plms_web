@@ -26,7 +26,7 @@ export interface ItemView {
 
 interface ItemRow {
   item: MediaItem;
-  video: FileRow;
+  media: FileRow;
   cover: FileRow | null;
   creator: { id: string; name: string };
 }
@@ -123,14 +123,14 @@ export class ItemsService {
     const [row] = await this.rows(this.db, eq(mediaItems.id, itemId));
     if (!row || !visibleTo(row.item, actor)) throw new NotFoundException(NOT_FOUND);
     if (row.item.status !== 'ready') throw new ConflictException('This video is still uploading.');
-    const url = await this.storage.presignGet(row.video.storageKey, LINK_TTL_SECONDS, { contentType: row.video.contentType });
+    const url = await this.storage.presignGet(row.media.storageKey, LINK_TTL_SECONDS, { contentType: row.media.contentType });
     // Written only after the link exists, and every issued link is recorded (including a renewal while watching).
     await this.audit.record(this.db, {
       actor: actorOf(actor),
       action: 'playback.played',
       target: { type: 'video', id: itemId, label: row.item.title },
     });
-    return { url, expiresAt: new Date(Date.now() + LINK_TTL_SECONDS * 1000).toISOString(), contentType: row.video.contentType };
+    return { url, expiresAt: new Date(Date.now() + LINK_TTL_SECONDS * 1000).toISOString(), contentType: row.media.contentType };
   }
 
   private async requireFolder(executor: DbExecutor, folderId: string, lock = false) {
@@ -142,9 +142,9 @@ export class ItemsService {
 
   private rows(executor: DbExecutor, where: SQL | undefined): Promise<ItemRow[]> {
     return executor
-      .select({ item: mediaItems, video: files, cover: coverFile, creator: { id: users.id, name: users.name } })
+      .select({ item: mediaItems, media: files, cover: coverFile, creator: { id: users.id, name: users.name } })
       .from(mediaItems)
-      .innerJoin(files, eq(files.id, mediaItems.videoFileId))
+      .innerJoin(files, eq(files.id, mediaItems.mediaFileId))
       .leftJoin(coverFile, eq(coverFile.id, mediaItems.coverFileId))
       .innerJoin(users, eq(users.id, mediaItems.createdBy))
       .where(where)
@@ -162,7 +162,7 @@ export class ItemsService {
       title: row.item.title,
       description: row.item.description,
       durationSeconds: row.item.durationSeconds,
-      sizeBytes: row.video.sizeBytes,
+      sizeBytes: row.media.sizeBytes,
       status: row.item.status,
       coverUrl,
       createdBy: row.creator,

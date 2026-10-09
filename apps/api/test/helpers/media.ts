@@ -92,7 +92,7 @@ export async function seedItem(db: Database, options: SeedItemOptions) {
       title: options.title ?? `Video ${randomUUID().slice(0, 8)}`,
       description: options.description ?? null,
       position: options.position ?? 0,
-      videoFileId: video.id,
+      mediaFileId: video.id,
       coverFileId,
       durationSeconds: options.durationSeconds ?? null,
       status,

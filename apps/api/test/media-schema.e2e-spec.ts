@@ -51,7 +51,7 @@ describe('media tables', () => {
     const user = await createUser(db);
     const [parent] = await folder(user.id, `Folder ${randomUUID()}`);
     const file = await videoFile(user.id);
-    const item = { folderId: parent.id, title: 'T', position: 0, videoFileId: file.id, status: 'uploading' as const, createdBy: user.id };
+    const item = { folderId: parent.id, title: 'T', position: 0, mediaFileId: file.id, status: 'uploading' as const, createdBy: user.id };
     await db.insert(mediaItems).values(item);
     expect(await isRejectedAsDuplicate(db.insert(mediaItems).values(item))).toBe(true);
     const sameKey = db

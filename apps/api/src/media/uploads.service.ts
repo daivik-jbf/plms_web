@@ -87,7 +87,7 @@ export class UploadsService {
             title: input.title,
             description: input.description ?? null,
             position: next,
-            videoFileId: file.id,
+            mediaFileId: file.id,
             durationSeconds: input.durationSeconds ?? null,
             status: 'uploading',
             createdBy: actor.id,
@@ -190,7 +190,7 @@ export class UploadsService {
         createdAt: files.createdAt,
       })
       .from(files)
-      .innerJoin(mediaItems, eq(mediaItems.videoFileId, files.id))
+      .innerJoin(mediaItems, eq(mediaItems.mediaFileId, files.id))
       .where(and(eq(files.uploadedBy, actor.id), eq(files.purpose, 'video'), eq(files.status, 'pending')))
       .orderBy(desc(files.createdAt));
   }
@@ -199,7 +199,7 @@ export class UploadsService {
     const [row] = await this.db
       .select({ file: files, item: mediaItems })
       .from(files)
-      .innerJoin(mediaItems, eq(mediaItems.videoFileId, files.id))
+      .innerJoin(mediaItems, eq(mediaItems.mediaFileId, files.id))
       .where(and(eq(files.id, fileId), eq(files.purpose, 'video')));
     if (!row) throw new NotFoundException('Upload not found.');
     if (row.file.uploadedBy !== actor.id && actor.role !== 'admin') throw new ForbiddenException('This upload belongs to someone else.');
@@ -211,7 +211,7 @@ export class UploadsService {
     const [row] = await this.db
       .select({ status: files.status, itemId: mediaItems.id })
       .from(files)
-      .innerJoin(mediaItems, eq(mediaItems.videoFileId, files.id))
+      .innerJoin(mediaItems, eq(mediaItems.mediaFileId, files.id))
       .where(eq(files.id, fileId));
     if (!row) throw new NotFoundException(GONE);
     if (row.status === 'ready') return this.items.view(row.itemId, actor);

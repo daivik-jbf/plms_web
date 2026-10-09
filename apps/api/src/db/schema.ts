@@ -114,7 +114,7 @@ export const auditLog = pgTable(
   ],
 );
 
-export const filePurpose = pgEnum('file_purpose', ['video', 'cover']);
+export const filePurpose = pgEnum('file_purpose', ['video', 'cover', 'audio']);
 export const fileStatus = pgEnum('file_status', ['pending', 'ready']);
 export const mediaCategory = pgEnum('media_category', ['video', 'movie', 'podcast', 'song']);
 export const mediaItemStatus = pgEnum('media_item_status', ['uploading', 'ready']);
@@ -167,7 +167,8 @@ export const mediaItems = pgTable(
     title: text('title').notNull(),
     description: text('description'),
     position: integer('position').notNull(),
-    videoFileId: uuid('video_file_id')
+    // The main file of the item: a video (videos, movies) or an audio file (podcasts, songs).
+    mediaFileId: uuid('media_file_id')
       .notNull()
       .references(() => files.id),
     coverFileId: uuid('cover_file_id').references(() => files.id),
@@ -180,7 +181,7 @@ export const mediaItems = pgTable(
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('media_items_video_file_unique').on(table.videoFileId),
+    uniqueIndex('media_items_media_file_unique').on(table.mediaFileId),
     index('media_items_folder_idx').on(table.folderId, table.position),
   ],
 );
