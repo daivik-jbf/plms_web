@@ -50,3 +50,14 @@ One line per meaningful change, newest last.
 - 2026-10-09: Added the Videos pages: folders, a folder's videos with the player, edit dialog and reordering, and the media API client.
 - 2026-10-09: Added the upload engine (three pieces at a time, retries with waits, resume), the app-wide upload manager and progress panel, the upload dialog and the list of unfinished uploads with Resume; Cancel is offered only while pieces are being sent.
 - 2026-10-09: Documented storage and the media API: the Cloudflare setup guide `docs/storage.md`, the contract `docs/api/media.md`, the 12 new audit actions in `docs/api/audit.md`, and the README, architecture notes and working-memory files.
+- 2026-10-09: Added the milestone 4 design spec and implementation plan (Movies, Podcasts, Songs and the docked player).
+- 2026-10-09: Added the media kinds table with the MP3 and M4A first-bytes checks and `audio/` storage keys.
+- 2026-10-09: Added migration 0004: `media_items.video_file_id` is now `media_file_id` and `file_purpose` has an `audio` value.
+- 2026-10-09: Folder routes now work for every category (`/api/media/:category/folders`), and folders and items name their category in responses.
+- 2026-10-09: Uploads for movies, podcasts and songs: the folder's kind decides the allowed type, size, storage key and checks, and a bad audio file is refused with its own message.
+- 2026-10-09: Audit entries now use the right word per category (video, movie, podcast, song) and have a new `not_audio` failure reason; the media labels became neutral.
+- 2026-10-09: Added the web file rules per kind: MP3 and M4A up to 500 MB for audio, with each file's type declared exactly as the server expects.
+- 2026-10-09: Added the docked audio player: one track at a time with seek, volume, mute and Close.
+- 2026-10-09: Mounted the docked player in the app shell so it keeps playing while the person browses, with room left at the bottom of every page and above the upload panel.
+- 2026-10-09: Added the Movies, Podcasts and Songs pages: the Videos pages now serve all four categories, and podcasts and songs play in the dock.
+- 2026-10-09: Documented milestone 4 in the media and audit API pages, the storage guide, the README, the architecture notes and the working-memory files.

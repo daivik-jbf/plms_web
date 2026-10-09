@@ -1,6 +1,6 @@
-# JBF LMS API: audit log (milestones 2 and 3)
+# JBF LMS API: audit log (milestones 2 to 4)
 
-This is the hand-written contract for the audit log read side, written from the code (`apps/api/src/audit/`) and its end-to-end tests (`apps/api/test/audit*.e2e-spec.ts`). Authentication, token handling, the error body shape and the rate-limit rules are described in `docs/api/auth.md`; this page only adds what is specific to the audit log. Milestone 3 added 12 actions for folders, videos, uploads and playback (see the table below); the endpoints that write them are described in `docs/api/media.md`. A generated OpenAPI document is still planned for milestone 6 (see `PROGRESS.md`).
+This is the hand-written contract for the audit log read side, written from the code (`apps/api/src/audit/`) and its end-to-end tests (`apps/api/test/audit*.e2e-spec.ts`). Authentication, token handling, the error body shape and the rate-limit rules are described in `docs/api/auth.md`; this page only adds what is specific to the audit log. Milestone 3 added 12 actions for folders, videos, uploads and playback (see the table below); the endpoints that write them are described in `docs/api/media.md`. Milestone 4 reuses the media actions for movies, podcasts and songs. A generated OpenAPI document is still planned for milestone 6 (see `PROGRESS.md`).
 
 - Base path: every route starts with `/api`.
 - Access: **Admin only**. No token gives 401 (`Unauthorized`). A Staff token gives 403 (`You do not have permission to do that.`). The server enforces this on all three endpoints; hiding the pages in the web app is only a convenience.
@@ -64,7 +64,7 @@ Every entry has exactly these 16 fields (`null` where nothing applies):
 | `label` | string | Short human label, for example `Role changed` |
 | `tone` | `change`, `danger`, `warning`, `success` or `neutral` | Suggested styling |
 | `category` | `accounts`, `content`, `files` or `playback` | Category of the action |
-| `target` | object or `null` | What it was done to; `null` when the entry has no target. Fields: `type` (for example `user`, `invite`, `video`, `folder`, `category` or `cover`), `id` (string), `label` (string or `null`), `name` (the user's current name when the target is a user, else `null`) |
+| `target` | object or `null` | What it was done to; `null` when the entry has no target. Fields: `type` (for example `user`, `invite`, `video`, `movie`, `podcast`, `song`, `folder`, `category` or `cover`), `id` (string), `label` (string or `null`), `name` (the user's current name when the target is a user, else `null`) |
 | `source` | string | `portal`, `mobile` or `system` |
 | `ip` | string or `null` | Client IP address |
 | `userAgent` | string or `null` | Client user agent |
@@ -142,16 +142,18 @@ The server generates `label`, `tone`, `category` and `summary` for every entry, 
 | `audit.exported` | Exported audit log | neutral | accounts | `<actor> exported <n> audit log row(s)` (`row` when n is 1; from `metadata.rowCount`; without a count: `<actor> exported audit log rows`) |
 | `content.folder.created` | Folder created | change | content | `<actor> created the folder <target>` (the target is the folder name) |
 | `content.folder.renamed` | Folder renamed | change | content | `<actor> renamed the folder from <before> to <after>` (from `changes.name`; without them: `<actor> renamed the folder <target>`) |
-| `content.folder.reordered` | Folders reordered | neutral | content | `<actor> changed the order of the video folders` |
-| `content.video.added` | Video added | change | content | `<actor> added the video <target>` (the target is the video title) |
-| `content.video.edited` | Video edited | change | content | `<actor> edited the video <target>` (title and description before and after in `changes`) |
-| `content.video.reordered` | Videos reordered | neutral | content | `<actor> changed the order of the videos in <target>` (the target is the folder) |
-| `content.video.cover_set` | Cover set | change | content | `<actor> set the cover image of <target>` |
+| `content.folder.reordered` | Folders reordered | neutral | content | `<actor> changed the order of the <noun> folders` |
+| `content.video.added` | Item added | change | content | `<actor> added the <noun> <target>` (the target is the item title) |
+| `content.video.edited` | Item edited | change | content | `<actor> edited the <noun> <target>` (title and description before and after in `changes`) |
+| `content.video.reordered` | Items reordered | neutral | content | `<actor> changed the order of the <nouns> in <target>` (the target is the folder) |
+| `content.video.cover_set` | Cover set | change | content | `<actor> set the cover image of the <noun> <target>` |
 | `file.upload_started` | Upload started | neutral | files | `<actor> started uploading <target>` (metadata: `fileId`, `sizeBytes`, `partCount`) |
 | `file.upload_completed` | Upload finished | success | files | `<actor> finished uploading <target>` |
-| `file.upload_failed` | Upload failed | warning | files | `The upload of <target> failed (<reason>)`. Reasons (from `metadata.reason`): `size_mismatch` is "the file size did not match", `not_mp4` is "the file is not a valid MP4", `bad_image` is "the cover image is not valid", `expired` is "it was not finished within 24 hours"; with no recognised reason: `The upload of <target> failed`. An `expired` entry has no actor (the system cleans up abandoned uploads) |
+| `file.upload_failed` | Upload failed | warning | files | `The upload of <target> failed (<reason>)`. Reasons (from `metadata.reason`): `size_mismatch` is "the file size did not match", `not_mp4` is "the file is not a valid MP4", `not_audio` is "the file is not a valid MP3 or M4A", `bad_image` is "the cover image is not valid", `expired` is "it was not finished within 24 hours"; with no recognised reason: `The upload of <target> failed`. An `expired` entry has no actor (the system cleans up abandoned uploads) |
 | `file.upload_cancelled` | Upload cancelled | neutral | files | `<actor> cancelled the upload of <target>` |
 | `playback.played` | Played | neutral | playback | `<actor> played <target>` (one entry for every playback link issued, including renewals) |
+
+`<noun>` is `video`, `movie`, `podcast` or `song` from `metadata.category` (`<nouns>`: `videos`, `movies`, `podcasts`, `songs`). Entries written before milestone 4 have no `metadata.category` and read `video`, as does any unknown value. The labels changed in milestone 4 for old rows too, because labels come from the action name.
 
 Unknown actions: an action that is not in the table (for example one written by a later milestone) is still returned. `label` is the raw action name, `tone` is `neutral`, `category` follows the prefix rule above, and `summary` is `<actor> performed <action>`. Clients should treat `tone` and `category` as closed sets but never assume `action` is a closed set.
 

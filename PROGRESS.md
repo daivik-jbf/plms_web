@@ -31,7 +31,7 @@ Last updated: 2026-10-09
 - Tests at the end of the build (before the final fix wave): 219 API tests and 146 web tests, all passing.
 - Final fix wave (after the whole-branch review): audit filters and cursor hardened (years 0001-9999, microsecond-exact date bounds, uppercase ids, a fixed UTC cursor text), export backpressure and client-disconnect handling, keyboard focus kept on the Audit log page, plain words for a bad address, and dialog, tabs, Staff and My account polish. Tests after the final fix wave: 243 API tests and 184 web tests, all passing.
 
-## Done: milestone 3 (Videos: upload, storage and playback; built, awaiting approval)
+## Done: milestone 3 (Videos: upload, storage and playback; built and merged to `main` 2026-10-09)
 
 - Storage: a `StoragePort` interface with three drivers: Cloudflare R2 (production, AWS SDK v3), a local development driver (files under `STORAGE_LOCAL_DIR`, signed expiring links served by public `/api/dev-storage/*` routes, refused in production) and an in-memory fake for tests. `npm run storage:check` proves a real bucket works (uploads, reads, pieces and the browser CORS permissions); `npm run storage:cleanup` and an hourly timer remove uploads left unfinished for 24 hours.
 - Database (migration `0003`): `files`, `media_folders`, `media_items`. 12 new audit actions (folders, videos, uploads, playback; the `content`, `files` and `playback` categories are now used), 29 known actions in all.
@@ -40,13 +40,24 @@ Last updated: 2026-10-09
 - Documentation: `docs/storage.md` (the Cloudflare setup guide, written for a first-time user), `docs/api/media.md` (the contract) and the 12 new actions in `docs/api/audit.md`.
 - Tests at the end of the build: 453 API tests (44 suites) and 325 web tests (38 files), all passing. Lint and both builds are clean. `npm audit --audit-level=high` exits 0 (24 moderate advisories, all in development tooling: `esbuild` through `drizzle-kit` and `sprintf-js` through `jest`/`ts-jest`).
 
+## Done: milestone 4 (Movies, Podcasts, Songs and the docked player; built, awaiting approval)
+
+- Four fixed categories on one implementation: Videos, Movies, Podcasts and Songs. A kinds table (`apps/api/src/media/media-kinds.ts`, with a web copy in `apps/web/src/uploads/limits.ts` and `apps/web/src/media/categories.ts`) holds each category's content types, largest size, first-bytes check, storage prefix and words. The folder decides the kind; the declared type and size are checked against it.
+- Audio uploads: MP3 (`audio/mpeg`) and M4A (`audio/mp4`) up to 500 MiB (at most 32 pieces), checked on completion by the stored type and the first bytes (`ID3` or an MPEG frame for MP3, `ftyp` for M4A), with a new `not_audio` failure reason. Audio files are stored as `audio/<uuid>` with the file purpose `audio`. Videos and movies are unchanged (MP4, 2 GiB).
+- Database (migration `0004`): `media_items.video_file_id` renamed to `media_file_id` and `audio` added to `file_purpose`. Tested on a database that already holds a video, a cover and an unfinished upload.
+- API: folder routes take the category (`/api/media/:category/folders`, an unknown slug is 404); folders and items report their `category`; the other media routes are unchanged. Three error messages lost the word "video".
+- Audit: action names are unchanged, labels are neutral ("Item added"), sentences take the word (video, movie, podcast, song) from `metadata.category` and fall back to "video" for older entries; the target type of an item is its category.
+- Web: sidebar entries and pages for the four categories (the milestone 3 pages now serve all of them), an upload dialog and file rules per kind, and the docked audio player: one track at a time, seek, volume, mute and Close, mounted in the app shell so it keeps playing while the person browses and stops on sign-out, with room left at the bottom of every page and the upload panel above it. Videos and movies still play in the pop-up.
+- Documentation: the media and audit API pages, `docs/storage.md`, the README and the architecture notes.
+- Tests at the end of the build: 539 API tests (48 suites) and 388 web tests (40 files), all passing. Lint and both builds are clean.
+
 ## In progress
 
-Nothing in the build. Milestone 3 is built and waiting for the user's approval (try an upload and a playback, see open items 19 and 20) before the branch is merged. `TASKS.md` stays unticked until then.
+Nothing in the build. Milestone 4 is built and waiting for the user's approval (see open items 23 to 26). Milestone 3 was built and merged to `main` on 2026-10-09 (commit 827e0d6); it has not been formally approved yet. `TASKS.md` is unchanged.
 
-## Next: milestone 4
+## Next: milestone 5
 
-Movies, Podcasts and Songs (reusing the milestone 3 upload and storage code) and the docked player.
+Courses and attachments.
 
 ## Open items and questions
 
@@ -72,3 +83,7 @@ Movies, Podcasts and Songs (reusing the milestone 3 upload and storage code) and
 20. The browser parts of milestone 3 (real `<video>` playback and seeking, `XMLHttpRequest` upload progress, the local development links through the Vite proxy, drag and keyboard use of the dialogs) were verified only with automated tests, not in a real browser. The user should try an upload (with a cover) and a playback in a browser, and the manual check in the milestone 3 plan.
 21. Accepted risk (ruling R8): a cover upload link, valid for one hour, stays usable after the cover is verified, so whoever obtained it (only a signed-in Staff or Admin can) can overwrite the stored cover until it expires. A later server-side copy on completion would close it. See `docs/storage.md` and `DECISIONS.md`.
 22. Milestone 3 has no delete: cancelling an unfinished upload and replacing a cover are the only removals. Deleting videos, the Trash and restore arrive in milestone 6; replacing a video's file is later.
+23. The browser parts of milestone 4 (real `<audio>` playback, seeking, volume and mute, the browser's autoplay rules, the dock layout on a phone and above the upload panel, and a video pop-up over a playing dock) were verified only with automated (jsdom) tests, not in a real browser. The user should try the manual check in the milestone 4 plan.
+24. Some MP3 and HE-AAC encodings play in some browsers and not in others: the server checks the file format (type and first bytes), not the codec.
+25. A video MP4 declared as `audio/mp4` and uploaded into a Songs or Podcasts folder passes the `ftyp` check and is accepted (spec risk 4); the browser's audio element plays the audio track, if there is one.
+26. The Cloudflare account and R2 bucket are still not connected (item 19 stays); audio uploads have only been exercised with the local and in-memory drivers.

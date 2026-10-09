@@ -1,4 +1,4 @@
-# Storage: videos and cover images (Cloudflare R2)
+# Storage: media files and cover images (Cloudflare R2)
 
 This guide is for the person who sets up the storage for the JBF Learning Management System. You do not need to have used Cloudflare before. Follow the steps in order; each one says what to click and what to copy. The developer view of the same feature is in `docs/api/media.md`.
 
@@ -6,10 +6,10 @@ This guide is for the person who sets up the storage for the JBF Learning Manage
 
 ## 1. What this is for
 
-Videos and cover images are not kept on the server. They go to **Cloudflare R2**, a private online storage service (think of a very large, locked filing cabinet that only this system has the key to). A folder in R2 is called a **bucket**.
+Videos, movies, podcasts, songs and cover images are not kept on the server. They go to **Cloudflare R2**, a private online storage service (think of a very large, locked filing cabinet that only this system has the key to). A folder in R2 is called a **bucket**.
 
-- The browser sends each video in pieces (16 MB each) straight to R2, using **temporary links** that the API hands out. A temporary link is a web address that only works for one specific job (for example "upload piece 3 of this video") and stops working after one hour. The video bytes never pass through the API server.
-- Videos are played through temporary links as well, and cover images are shown through temporary links.
+- The browser sends each file (a video, movie, podcast or song) in pieces (16 MB each) straight to R2, using **temporary links** that the API hands out. A temporary link is a web address that only works for one specific job (for example "upload piece 3 of this video") and stops working after one hour. The file bytes never pass through the API server.
+- Videos, movies, podcasts and songs are played through temporary links as well, and cover images are shown through temporary links.
 - The bucket is never public. Nobody can open a file without a temporary link that the API issued to a signed-in person.
 
 ## 2. Before you start
@@ -96,20 +96,21 @@ The default setting, `STORAGE_DRIVER=local`, keeps files in a folder on the deve
 
 | Rule | Value |
 | --- | --- |
-| Video type | MP4 only (`video/mp4`). Other formats must be converted first (for example with HandBrake) |
-| Video size | 1 byte up to 2 GB (2,147,483,648 bytes) |
+| Videos and movies | MP4 only (`video/mp4`), 1 byte up to 2 GB (2,147,483,648 bytes). Other formats must be converted first (for example with HandBrake) |
+| Podcasts and songs | MP3 (`audio/mpeg`) or M4A (`audio/mp4`), 1 byte up to 500 MB (524,288,000 bytes). Raw AAC, WAV and FLAC are not accepted |
+| Storage names | Random, never typed text: `videos/<id>` (videos and movies), `audio/<id>` (podcasts and songs), `covers/<id>` |
 | Cover images | JPEG, PNG or WebP, up to 10 MB |
-| Piece size | 16 MB; a 2 GB video is at most 128 pieces. Every piece except the last must be at least 5 MB (R2's own rule) |
+| Piece size | 16 MB; a 2 GB video is at most 128 pieces and a 500 MB audio file at most 32. Every piece except the last must be at least 5 MB (R2's own rule) |
 | Temporary links | Valid for 1 hour |
 | Unfinished uploads | Removed after 24 hours: an hourly timer inside the API does it, or run `npm run storage:cleanup -w @jbf/api` (it prints `Removed N abandoned uploads.`). Running it twice is harmless |
 
-When an upload is finished the API checks the stored file itself: its size must equal what was declared, its type must match, and its first bytes must look like an MP4 (or a JPEG, PNG or WebP for a cover). A file that fails is discarded and the person is told why.
+When an upload is finished the API checks the stored file itself: its size must equal what was declared, its type must match, and its first bytes must look like an MP4 (videos, movies and M4A), an MP3, or a JPEG, PNG or WebP for a cover. A file that fails is discarded and the person is told why.
 
 ## 7. Security notes
 
 - The bucket is private. The only way to read or write a file is a temporary link issued by the API to a signed-in Admin or Staff member.
 - Temporary links last one hour. They are never written to the audit log or the server logs, and are never stored by the web app. The audit log records that a link was issued (a "Played" entry for every playback link), not the link.
-- A person who has a playback link can watch that video until the link expires. That is true of any temporary link and is accepted.
+- A person who has a playback link can play that file until the link expires. That is true of any temporary link and is accepted.
 - **Accepted risk: a cover upload link stays usable for its hour.** A cover upload link is tied to the image type but not to its length, and it keeps working after the cover has been checked and attached. Until the link expires (one hour), the person who obtained it can write arbitrary or oversized bytes into the stored cover file, which the portal's size and first-bytes checks would have refused. Only a signed-in Staff or Admin member can obtain such a link. When a cover is read, the link forces the declared content type, and the bucket is private. Copying the file on the server when the cover is completed would close this gap; that is future work.
 - The access key is limited to one bucket. To rotate it: create a new key (step 3), update `apps/api/.env`, restart the API, then delete the old key in Cloudflare.
 - Keep `apps/api/.env` out of version control and out of backups that many people can read.
