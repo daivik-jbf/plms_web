@@ -4,10 +4,11 @@ import { AuditService } from '../audit/audit.service';
 import { ENV } from '../config/config.module';
 import type { Env } from '../config/env';
 import { DB, type Database } from '../db/db.module';
-import { type FileRow, files, mediaItems } from '../db/schema';
+import { type FileRow, files } from '../db/schema';
 import { PENDING_UPLOAD_MAX_AGE_MS } from '../storage/storage.constants';
 import { STORAGE, type StoragePort } from '../storage/storage.port';
 import { discardStoredFile } from './discard';
+import { type RemovedUnfinished, removeUnfinishedItem } from './remove-unfinished';
 
 const INTERVAL_MS = 60 * 60 * 1000;
 
@@ -40,9 +41,11 @@ export class UploadCleanupService implements OnModuleInit, OnModuleDestroy {
     const stale = await this.db.select().from(files).where(and(eq(files.status, 'pending'), lt(files.createdAt, cutoff)));
     let removed = 0;
     for (const file of stale) {
-      if (await this.expire(file)) {
+      const expired = await this.expire(file);
+      if (expired) {
         removed += 1;
         await discardStoredFile(this.storage, this.logger, file);
+        if (expired.cover) await discardStoredFile(this.storage, this.logger, { ...expired.cover, uploadId: null });
       }
     }
     return { removed };
@@ -61,37 +64,34 @@ export class UploadCleanupService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Deletes the rows only if the file is still pending, so a video that finished a moment ago is never touched.
-  // The video row goes before the file row, the same order as a cancel and a finish use, so they cannot deadlock.
-  private expire(file: FileRow): Promise<boolean> {
+  // Deletes the rows (and the cover of an unfinished video) only if the file is still pending, so a video that finished
+  // a moment ago is never touched. The video row goes before the file rows, the same order as a cancel and a finish use,
+  // so they cannot deadlock. Returns null when nothing was removed.
+  private expire(file: FileRow): Promise<Pick<RemovedUnfinished, 'cover'> | null> {
     return this.db.transaction(async (tx) => {
       if (file.purpose === 'video') {
-        const [item] = await tx
-          .delete(mediaItems)
-          .where(and(eq(mediaItems.videoFileId, file.id), eq(mediaItems.status, 'uploading')))
-          .returning({ id: mediaItems.id, title: mediaItems.title });
-        if (!item) return false;
-        await tx.delete(files).where(eq(files.id, file.id));
+        const removed = await removeUnfinishedItem(tx, file.id);
+        if (!removed) return null;
         await this.audit.record(tx, {
           actor: null,
           action: 'file.upload_failed',
-          target: { type: 'video', id: item.id, label: item.title },
+          target: { type: 'video', id: removed.item.id, label: removed.item.title },
           metadata: { fileId: file.id, reason: 'expired' },
         });
-        return true;
+        return { cover: removed.cover };
       }
       const [gone] = await tx
         .delete(files)
         .where(and(eq(files.id, file.id), eq(files.status, 'pending')))
         .returning({ id: files.id });
-      if (!gone) return false;
+      if (!gone) return null;
       await this.audit.record(tx, {
         actor: null,
         action: 'file.upload_failed',
         target: { type: 'cover', id: file.id, label: 'a cover image' },
         metadata: { fileId: file.id, reason: 'expired' },
       });
-      return true;
+      return { cover: null };
     });
   }
 }

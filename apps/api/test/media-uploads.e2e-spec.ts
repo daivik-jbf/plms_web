@@ -8,6 +8,7 @@ import { StorageError } from '../src/storage/storage.port';
 import { bearer } from './helpers/auth';
 import { createTestApp } from './helpers/app';
 import {
+  attachCoverViaApi,
   completeViaApi,
   mp4Bytes,
   pngBytes,
@@ -304,6 +305,20 @@ describe('uploading videos', () => {
       expect((await auditFor('file.upload_failed', started.itemId))[0].metadata).toMatchObject({ reason: 'not_mp4' });
     });
 
+    it('also removes the cover attached to an upload it discards as not an MP4', async () => {
+      const { owner, folder } = await setup();
+      const started = await startUploadViaApi(app, owner.session, folder.id, { sizeBytes: 64 });
+      const coverId = await attachCoverViaApi(app, storage, owner.session, started.itemId);
+      const coverKey = (await fileRow(coverId)).storageKey;
+      expect(storage.has(coverKey)).toBe(true);
+      const parts = await putPieces(app, storage, owner.session, started.fileId, pngBytes(64));
+      await completeViaApi(app, owner.session, started.fileId, parts).expect(422);
+      expect(await itemRow(started.itemId)).toBeUndefined();
+      expect(await fileRow(started.fileId)).toBeUndefined();
+      expect(await fileRow(coverId)).toBeUndefined();
+      expect(storage.has(coverKey)).toBe(false);
+    });
+
     it('is for the uploader or an Admin only, and 404s once the upload is gone', async () => {
       const { owner, other, admin, folder } = await setup();
       const body = mp4Bytes(100);
@@ -376,6 +391,31 @@ describe('uploading videos', () => {
       expect(await itemRow(started.itemId)).toBeUndefined();
       expect(await auditFor('file.upload_cancelled', started.itemId)).toHaveLength(1);
       await http().delete(`/api/media/uploads/${started.fileId}`).set(...bearer(owner.session)).expect(404);
+    });
+
+    it('also removes the cover attached to the unfinished upload, in the database and in storage', async () => {
+      const { owner, folder } = await setup();
+      const started = await startUploadViaApi(app, owner.session, folder.id);
+      const coverId = await attachCoverViaApi(app, storage, owner.session, started.itemId);
+      const coverKey = (await fileRow(coverId)).storageKey;
+      expect(storage.has(coverKey)).toBe(true);
+      await http().delete(`/api/media/uploads/${started.fileId}`).set(...bearer(owner.session)).expect(204);
+      expect(await itemRow(started.itemId)).toBeUndefined();
+      expect(await fileRow(started.fileId)).toBeUndefined();
+      expect(await fileRow(coverId)).toBeUndefined();
+      expect(storage.has(coverKey)).toBe(false);
+      const [entry] = await auditFor('file.upload_cancelled', started.itemId);
+      expect(JSON.stringify(entry)).not.toMatch(/covers\/|memory:/);
+    });
+
+    it('never touches the cover of a finished video', async () => {
+      const { owner, folder } = await setup();
+      const { itemId, fileId, coverFileId } = await seedItem(db, { folderId: folder.id, createdBy: owner.user.id, storage, withCover: true });
+      const coverKey = (await fileRow(coverFileId as string)).storageKey;
+      await http().delete(`/api/media/uploads/${fileId}`).set(...bearer(owner.session)).expect(409);
+      expect((await itemRow(itemId)).coverFileId).toBe(coverFileId);
+      expect((await fileRow(coverFileId as string)).status).toBe('ready');
+      expect(storage.has(coverKey)).toBe(true);
     });
 
     it('lets an Admin cancel anyone\'s upload but not another Staff member', async () => {

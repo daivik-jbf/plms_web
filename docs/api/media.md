@@ -211,7 +211,7 @@ Reports what storage already holds, so an app that was closed or lost its state 
 
 - `status` is `pending` or `ready`. When it is `ready` the upload has finished and `uploadedParts` is empty.
 - `uploadedParts` comes from storage itself, even if the client forgot what it had sent. Send only the missing pieces, and use the listed `etag` values for the pieces you do not resend.
-- Only resume with the same file (same name and size). The server cannot tell, so the client must check; a different file is caught at completion as a size or type mismatch and the upload is discarded.
+- Only resume with the same file (same name and size). The stored name is the tidied display name (control characters and slashes become spaces, repeated spaces collapse, leading dots are dropped, at most 255 characters), so a client must tidy the chosen file's name the same way before comparing it. The server cannot tell, so the client must check; a different file is caught at completion as a size or type mismatch and the upload is discarded.
 - 409 `This upload can no longer be continued. Cancel it and start again.` when storage has lost the upload.
 
 ### `GET /api/media/uploads/mine`
@@ -247,7 +247,7 @@ Errors:
 
 ### `DELETE /api/media/uploads/:fileId`
 
-Cancels an unfinished upload: the stored pieces are discarded and the hidden item is removed. 204 with no body. Allowed to the uploader or an Admin. It never touches a finished video: for one that is ready the answer is 409 (`This video has already finished uploading. Finished videos cannot be cancelled here.`). Cancelling an upload that is already gone is a 404 (`Upload not found.`); a client that wanted it gone can treat that as success.
+Cancels an unfinished upload: the stored pieces are discarded and the hidden item is removed, together with its cover image if one was already attached (the web app sends the cover before the pieces). A failed verification and the 24-hour cleanup remove the cover the same way. 204 with no body. Allowed to the uploader or an Admin. It never touches a finished video: for one that is ready the answer is 409 (`This video has already finished uploading. Finished videos cannot be cancelled here.`). Cancelling an upload that is already gone is a 404 (`Upload not found.`); a client that wanted it gone can treat that as success.
 
 Do not cancel while the final `complete` request is running: a cancel racing with completion can make the upload fail even though it was fine. Cancel while still sending pieces; the web app only offers Cancel while sending.
 

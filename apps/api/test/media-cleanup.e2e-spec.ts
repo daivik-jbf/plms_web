@@ -6,7 +6,7 @@ import { auditLog, files, mediaItems } from '../src/db/schema';
 import { UploadCleanupService } from '../src/media/upload-cleanup.service';
 import { bearer } from './helpers/auth';
 import { createTestApp } from './helpers/app';
-import { completeViaApi, mp4Bytes, pngBytes, putPieces, seedFolder, seedItem, signIn, startUploadViaApi, uploadVideo } from './helpers/media';
+import { attachCoverViaApi, completeViaApi, mp4Bytes, pngBytes, putPieces, seedFolder, seedItem, signIn, startUploadViaApi, uploadVideo } from './helpers/media';
 import type { InMemoryStorage } from './support/in-memory-storage';
 
 const HOUR = 3_600_000;
@@ -50,6 +50,38 @@ describe('cleaning up abandoned uploads', () => {
     expect(storage.pendingUploadCount()).toBe(pending - 1);
     const [entry] = await db.select().from(auditLog).where(and(eq(auditLog.action, 'file.upload_failed'), eq(auditLog.targetId, started.itemId)));
     expect(entry).toMatchObject({ actorId: null, metadata: expect.objectContaining({ reason: 'expired' }) });
+  });
+
+  it('removes the cover attached to an abandoned upload too, and records the expiry without any storage key', async () => {
+    const { owner, folder } = await setup();
+    const started = await startUploadViaApi(app, owner.session, folder.id);
+    const coverId = await attachCoverViaApi(app, storage, owner.session, started.itemId);
+    const coverKey = (await fileRow(coverId)).storageKey;
+    expect(storage.has(coverKey)).toBe(true);
+    await age(started.fileId, 25);
+
+    await cleanup.run();
+    expect(await itemRow(started.itemId)).toBeUndefined();
+    expect(await fileRow(started.fileId)).toBeUndefined();
+    expect(await fileRow(coverId)).toBeUndefined();
+    expect(storage.has(coverKey)).toBe(false);
+    const entries = await db.select().from(auditLog).where(and(eq(auditLog.action, 'file.upload_failed'), eq(auditLog.targetId, started.itemId)));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ actorId: null, metadata: { fileId: started.fileId, reason: 'expired' } });
+    expect(JSON.stringify(entries[0])).not.toMatch(/covers\/|videos\/|memory:/);
+  });
+
+  it('never touches the cover of a ready video', async () => {
+    const { owner, folder } = await setup();
+    const { itemId, fileId, coverFileId } = await seedItem(db, { folderId: folder.id, createdBy: owner.user.id, storage, withCover: true });
+    const coverKey = (await fileRow(coverFileId as string)).storageKey;
+    await age(fileId, 500);
+    await age(coverFileId as string, 500);
+
+    await cleanup.run();
+    expect((await itemRow(itemId)).coverFileId).toBe(coverFileId);
+    expect((await fileRow(coverFileId as string)).status).toBe('ready');
+    expect(storage.has(coverKey)).toBe(true);
   });
 
   it('leaves recent uploads and ready videos alone', async () => {
@@ -153,7 +185,7 @@ describe('cleaning up abandoned uploads', () => {
     const staleSnapshot = await fileRow(started.fileId);
     await completeViaApi(app, owner.session, started.fileId, parts).expect(200);
 
-    expect(await cleanup['expire'](staleSnapshot)).toBe(false);
+    expect(await cleanup['expire'](staleSnapshot)).toBeNull();
     expect((await itemRow(started.itemId)).status).toBe('ready');
     const ready = await fileRow(started.fileId);
     expect(ready.status).toBe('ready');

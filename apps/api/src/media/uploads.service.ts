@@ -22,6 +22,7 @@ import { discardStoredFile } from './discard';
 import { hasMp4Signature, sanitizeFileName } from './file-checks';
 import { type ItemView, ItemsService } from './items.service';
 import type { StartUploadInput } from './media.schemas';
+import { type RemovedUnfinished, removeUnfinishedItem } from './remove-unfinished';
 
 const GONE = 'This upload no longer exists.';
 const LOST_UPLOAD = 'This upload can no longer be continued. Cancel it and start again.';
@@ -174,7 +175,7 @@ export class UploadsService {
       if (current?.status === 'ready') throw new ConflictException(`${FINISHED} Finished videos cannot be cancelled here.`);
       return;
     }
-    await discardStoredFile(this.storage, this.logger, row.file);
+    await this.discardRemoved(row.file, removed);
   }
 
   mine(actor: AuthUser) {
@@ -217,32 +218,34 @@ export class UploadsService {
     throw new ConflictException(LOST_UPLOAD);
   }
 
-  // Removes the rows of a still-pending upload and records why. Returns false when someone else already did
-  // (or the upload finished meanwhile), so a ready video can never be removed by this path.
+  // Removes the rows of a still-pending upload (and its cover) and records why. Returns null when someone else already
+  // removed it (or the upload finished meanwhile), so a ready video is never removed.
   private async removePending(
     { file, item }: UploadRow,
     outcome: { actor: AuthUser; action: AuditAction; metadata: Record<string, unknown> },
-  ): Promise<boolean> {
+  ): Promise<RemovedUnfinished | null> {
     return this.db.transaction(async (tx) => {
-      const [gone] = await tx
-        .delete(mediaItems)
-        .where(and(eq(mediaItems.id, item.id), eq(mediaItems.status, 'uploading')))
-        .returning({ id: mediaItems.id });
-      if (!gone) return false;
-      await tx.delete(files).where(eq(files.id, file.id));
+      const removed = await removeUnfinishedItem(tx, file.id);
+      if (!removed) return null;
       await this.audit.record(tx, {
         actor: actorOf(outcome.actor),
         action: outcome.action,
         target: { type: 'video', id: item.id, label: item.title },
         metadata: outcome.metadata,
       });
-      return true;
+      return removed;
     });
+  }
+
+  // Storage calls stay outside the transaction and are best effort.
+  private async discardRemoved(file: FileRow, removed: RemovedUnfinished): Promise<void> {
+    await discardStoredFile(this.storage, this.logger, file);
+    if (removed.cover) await discardStoredFile(this.storage, this.logger, { ...removed.cover, uploadId: null });
   }
 
   private async fail(actor: AuthUser, row: UploadRow, reason: FailureReason): Promise<never> {
     const removed = await this.removePending(row, { actor, action: 'file.upload_failed', metadata: { fileId: row.file.id, reason } });
-    if (removed) await discardStoredFile(this.storage, this.logger, row.file);
+    if (removed) await this.discardRemoved(row.file, removed);
     throw new UnprocessableEntityException(FAILURE_MESSAGES[reason]);
   }
 

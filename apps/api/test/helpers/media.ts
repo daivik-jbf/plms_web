@@ -167,3 +167,13 @@ export async function uploadVideo(
   const res = await completeViaApi(app, session, started.fileId, parts);
   return { ...started, parts, res };
 }
+
+// Attaches a real cover to an item through the cover endpoints, the way the web does before it sends the pieces.
+export async function attachCoverViaApi(app: INestApplication, storage: InMemoryStorage, session: Session, itemId: string): Promise<string> {
+  const http = () => request(app.getHttpServer());
+  const body = pngBytes(100);
+  const started = await http().post(`/api/media/items/${itemId}/cover`).set(...bearer(session)).send({ contentType: 'image/png', sizeBytes: body.length }).expect(201);
+  storage.putObject(started.body.url, body);
+  await http().post(`/api/media/items/${itemId}/cover/${started.body.fileId}/complete`).set(...bearer(session)).expect(200);
+  return started.body.fileId;
+}
