@@ -4,6 +4,7 @@ import request from 'supertest';
 import type { Database } from '../src/db/db.module';
 import { auditLog, files, mediaItems } from '../src/db/schema';
 import { MAX_VIDEO_BYTES, MIN_PART_SIZE, PART_SIZE } from '../src/storage/storage.constants';
+import { StorageError } from '../src/storage/storage.port';
 import { bearer } from './helpers/auth';
 import { createTestApp } from './helpers/app';
 import {
@@ -311,6 +312,44 @@ describe('uploading videos', () => {
       expect((await completeViaApi(app, other.session, started.fileId, parts)).status).toBe(403);
       expect((await completeViaApi(app, admin.session, started.fileId, parts)).status).toBe(200);
       await http().post('/api/media/uploads/00000000-0000-4000-8000-000000000000/complete').set(...bearer(owner.session)).send({ parts }).expect(404);
+    });
+
+    describe('when the stored file disappears between the size check and the signature check', () => {
+      const prepare = async () => {
+        const { owner, folder } = await setup();
+        const body = mp4Bytes(100);
+        const started = await startUploadViaApi(app, owner.session, folder.id, { sizeBytes: body.length });
+        const parts = await putPieces(app, storage, owner.session, started.fileId, body);
+        return { owner, started, parts };
+      };
+
+      it('answers 409 and keeps a pending upload that is still there', async () => {
+        const { owner, started, parts } = await prepare();
+        const spy = jest.spyOn(storage, 'readRange').mockRejectedValueOnce(new StorageError('not_found', 'No such object.'));
+        try {
+          const res = await completeViaApi(app, owner.session, started.fileId, parts);
+          expect(res.status).toBe(409);
+          expect(res.body.message).toMatch(/no longer be continued/);
+          expect((await fileRow(started.fileId)).status).toBe('pending');
+          expect((await itemRow(started.itemId)).status).toBe('uploading');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
+      it('answers 404 when the upload was cancelled in that moment', async () => {
+        const { owner, started, parts } = await prepare();
+        const spy = jest.spyOn(storage, 'readRange').mockImplementationOnce(async () => {
+          await http().delete(`/api/media/uploads/${started.fileId}`).set(...bearer(owner.session)).expect(204);
+          throw new StorageError('not_found', 'No such object.');
+        });
+        try {
+          await completeViaApi(app, owner.session, started.fileId, parts).expect(404);
+          expect(await itemRow(started.itemId)).toBeUndefined();
+        } finally {
+          spy.mockRestore();
+        }
+      });
     });
 
     it('rejects a malformed list of pieces', async () => {

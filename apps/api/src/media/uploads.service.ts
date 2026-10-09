@@ -155,7 +155,12 @@ export class UploadsService {
     const info = await this.storage.head(file.storageKey);
     if (!info) return this.afterVanish(actor, fileId);
     if (info.size !== file.sizeBytes) return this.fail(actor, { file, item }, 'size_mismatch');
-    const head = await this.storage.readRange(file.storageKey, 0, 15);
+    // A cancel or the cleanup job can remove the object between the size check and this read.
+    const head = await this.storage.readRange(file.storageKey, 0, 15).catch((error: unknown) => {
+      if (error instanceof StorageError && error.code === 'not_found') return null;
+      throw error;
+    });
+    if (!head) return this.afterVanish(actor, fileId);
     if (info.contentType !== VIDEO_CONTENT_TYPE || !hasMp4Signature(head)) return this.fail(actor, { file, item }, 'not_mp4');
     return this.finish(actor, { file, item });
   }
