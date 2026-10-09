@@ -1,6 +1,7 @@
 export interface CorsResponse {
   allowOrigin: string | null;
   allowMethods: string | null;
+  allowHeaders: string | null;
   exposeHeaders: string | null;
 }
 
@@ -14,6 +15,10 @@ export function evaluateCors(response: CorsResponse, origin: string): string[] {
   }
   if (!tokens(response.allowMethods).includes('put')) {
     problems.push('The bucket does not allow the PUT method from the browser.');
+  }
+  const allowedHeaders = tokens(response.allowHeaders);
+  if (!allowedHeaders.includes('content-type') && !allowedHeaders.includes('*')) {
+    problems.push('The bucket does not allow the Content-Type header from the browser, so cover uploads would be blocked.');
   }
   if (!tokens(response.exposeHeaders).includes('etag')) {
     problems.push('The bucket does not expose the ETag header, so the browser cannot read each piece\'s receipt.');

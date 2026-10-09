@@ -16,6 +16,7 @@ async function main(): Promise<void> {
     console.error('Set STORAGE_DRIVER=r2 and the four R2_* settings in apps/api/.env first (see docs/storage.md).');
     process.exit(1);
   }
+  const origin = new URL(env.WEB_ORIGIN).origin;
   const storage = createStorage(env);
   const small = `covers/${randomUUID()}`;
   const big = `videos/${randomUUID()}`;
@@ -49,24 +50,30 @@ async function main(): Promise<void> {
       name: 'Upload in two pieces and finish',
       run: async () => {
         const uploadId = await storage.createMultipartUpload(big, 'video/mp4');
-        const bodies = [new Uint8Array(MIN_PART_SIZE).fill(7), new TextEncoder().encode('last piece')];
-        const parts: { partNumber: number; etag: string }[] = [];
-        for (const [index, body] of bodies.entries()) {
-          const url = await storage.presignUploadPart(big, uploadId, index + 1, 300);
-          const res = await fetch(url, { method: 'PUT', body });
-          const etag = res.headers.get('etag');
-          if (!res.ok || !etag) throw new Error(`Piece ${index + 1}: the service answered ${res.status} and ${etag ? 'a' : 'no'} receipt`);
-          parts.push({ partNumber: index + 1, etag });
+        let completed = false;
+        try {
+          const bodies = [new Uint8Array(MIN_PART_SIZE).fill(7), new TextEncoder().encode('last piece')];
+          const parts: { partNumber: number; etag: string }[] = [];
+          for (const [index, body] of bodies.entries()) {
+            const url = await storage.presignUploadPart(big, uploadId, index + 1, 300);
+            const res = await fetch(url, { method: 'PUT', body });
+            const etag = res.headers.get('etag');
+            if (!res.ok || !etag) throw new Error(`Piece ${index + 1}: the service answered ${res.status} and ${etag ? 'a' : 'no'} receipt`);
+            parts.push({ partNumber: index + 1, etag });
+          }
+          const listed = await storage.listParts(big, uploadId);
+          if (listed.length !== 2) throw new Error('The stored pieces were not listed');
+          await storage.completeMultipartUpload(big, uploadId, parts);
+          completed = true;
+          const info = await storage.head(big);
+          if (!info || info.size !== MIN_PART_SIZE + 10) throw new Error('The finished file has the wrong size');
+        } finally {
+          if (!completed) await storage.abortMultipartUpload(big, uploadId).catch(() => undefined);
         }
-        const listed = await storage.listParts(big, uploadId);
-        if (listed.length !== 2) throw new Error('The stored pieces were not listed');
-        await storage.completeMultipartUpload(big, uploadId, parts);
-        const info = await storage.head(big);
-        if (!info || info.size !== MIN_PART_SIZE + 10) throw new Error('The finished file has the wrong size');
       },
     },
     {
-      name: `Browser permissions (CORS) for ${env.WEB_ORIGIN}`,
+      name: `Browser permissions (CORS) for ${origin}`,
       run: async () => {
         const key = `videos/${randomUUID()}`;
         const uploadId = await storage.createMultipartUpload(key, 'video/mp4');
@@ -74,16 +81,20 @@ async function main(): Promise<void> {
           const url = await storage.presignUploadPart(key, uploadId, 1, 300);
           const preflight = await fetch(url, {
             method: 'OPTIONS',
-            headers: { Origin: env.WEB_ORIGIN, 'Access-Control-Request-Method': 'PUT', 'Access-Control-Request-Headers': 'content-type' },
+            headers: { Origin: origin, 'Access-Control-Request-Method': 'PUT', 'Access-Control-Request-Headers': 'content-type' },
           });
-          const actual = await fetch(url, { method: 'PUT', headers: { Origin: env.WEB_ORIGIN }, body: text });
+          const actual = await fetch(url, { method: 'PUT', headers: { Origin: origin }, body: text });
+          if (!actual.ok) {
+            return [`The test upload was refused (HTTP ${actual.status}); check the access key and bucket name before judging the browser permissions.`];
+          }
           return evaluateCors(
             {
               allowOrigin: actual.headers.get('access-control-allow-origin') ?? preflight.headers.get('access-control-allow-origin'),
               allowMethods: preflight.headers.get('access-control-allow-methods'),
+              allowHeaders: preflight.headers.get('access-control-allow-headers'),
               exposeHeaders: actual.headers.get('access-control-expose-headers'),
             },
-            env.WEB_ORIGIN,
+            origin,
           );
         } finally {
           await storage.abortMultipartUpload(key, uploadId).catch(() => undefined);

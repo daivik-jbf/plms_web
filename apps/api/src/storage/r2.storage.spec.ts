@@ -36,7 +36,7 @@ describe('R2Storage', () => {
     expect(input(0, send).input).toMatchObject({ Bucket: 'jbf-media', Key: KEY, UploadId: 'up-1' });
   });
 
-  it('completes with the pieces in ascending order', async () => {
+  it('sends the pieces to the service as given', async () => {
     const { send, storage } = fake();
     send.mockResolvedValueOnce({});
     await storage.completeMultipartUpload(KEY, 'up-1', [{ partNumber: 1, etag: '"a"' }, { partNumber: 2, etag: '"b"' }]);
@@ -44,6 +44,17 @@ describe('R2Storage', () => {
       UploadId: 'up-1',
       MultipartUpload: { Parts: [{ PartNumber: 1, ETag: '"a"' }, { PartNumber: 2, ETag: '"b"' }] },
     });
+  });
+
+  it('rejects an out-of-order or duplicated list through the service error mapping', async () => {
+    const { send, storage } = fake();
+    send.mockRejectedValue(Object.assign(new Error('x'), { name: 'InvalidPartOrder' }));
+    await expect(
+      storage.completeMultipartUpload(KEY, 'up-1', [{ partNumber: 2, etag: '"b"' }, { partNumber: 1, etag: '"a"' }]),
+    ).rejects.toMatchObject({ code: 'invalid_part' });
+    await expect(
+      storage.completeMultipartUpload(KEY, 'up-1', [{ partNumber: 1, etag: '"a"' }, { partNumber: 1, etag: '"a"' }]),
+    ).rejects.toMatchObject({ code: 'invalid_part' });
   });
 
   it.each([
