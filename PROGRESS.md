@@ -49,7 +49,7 @@ Last updated: 2026-10-09
 - Audit: action names are unchanged, labels are neutral ("Item added"), sentences take the word (video, movie, podcast, song) from `metadata.category` and fall back to "video" for older entries; the target type of an item is its category.
 - Web: sidebar entries and pages for the four categories (the milestone 3 pages now serve all of them), an upload dialog and file rules per kind, and the docked audio player: one track at a time, seek, volume, mute and Close, mounted in the app shell so it keeps playing while the person browses and stops on sign-out, with room left at the bottom of every page and the upload panel above it. Videos and movies still play in the pop-up.
 - Documentation: the media and audit API pages, `docs/storage.md`, the README and the architecture notes.
-- Tests at the end of the build: 539 API tests (48 suites) and 388 web tests (40 files), all passing. Lint and both builds are clean.
+- Tests at the end of the build: 539 API tests (48 suites) and 391 web tests (40 files), all passing. Lint and both builds are clean.
 
 ## In progress
 

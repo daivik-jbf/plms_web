@@ -51,7 +51,7 @@ describe('readDuration', () => {
     await expect(result).resolves.toBeNull();
   });
 
-  it.each([Number.POSITIVE_INFINITY, Number.NaN])('answers null for a length of %s', async (value) => {
+  it.each([Number.POSITIVE_INFINITY, Number.NaN, 0, 0.4, -1])('answers null for a length of %s', async (value) => {
     const result = readDuration(song, 'audio');
     Object.defineProperty(media, 'duration', { value, configurable: true });
     media.dispatchEvent(new Event('loadedmetadata'));

@@ -15,8 +15,11 @@ export function readDuration(file: File, kind: MediaKind): Promise<number | null
       resolve(seconds);
     };
     const timer = setTimeout(() => finish(null), TIMEOUT_MS);
-    // Some files report no usable length (NaN or Infinity); that is shown as unknown.
-    media.onloadedmetadata = () => finish(Number.isFinite(media.duration) ? Math.round(media.duration) : null);
+    // Some files report no usable length (NaN, Infinity, zero or less than half a second); that is shown as unknown.
+    media.onloadedmetadata = () => {
+      const seconds = Math.round(media.duration);
+      finish(Number.isFinite(seconds) && seconds > 0 ? seconds : null);
+    };
     media.onerror = () => finish(null);
     media.src = url;
   });

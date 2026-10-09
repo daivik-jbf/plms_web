@@ -10,7 +10,7 @@
   grid-template-areas: 'info transport volume close';
   align-items: center;
   gap: var(--space-2) var(--space-4);
-  height: var(--player-height);
+  min-height: var(--player-height);
   padding: var(--space-3) var(--space-6);
   border-top: 1px solid var(--color-border-strong);
   background: var(--color-bg);
@@ -122,17 +122,18 @@
   font-size: var(--text-sm);
 }
 
-/* Phone: title and Close on top; the controls, the seek slider and the volume below. */
+/* Phone: title, Mute and Close on top; the controls and the seek slider get the whole second row. The volume slider
+   is hidden (a phone has its own volume buttons); Mute stays. */
 @media (max-width: 760px) {
   .bar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-areas:
-      'info close'
-      'transport volume';
+      'info volume close'
+      'transport transport transport';
     padding: var(--space-3) var(--space-4);
   }
 
   .level {
-    width: 4rem;
+    display: none;
   }
 }
