@@ -1,11 +1,12 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import type { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodPipe } from '../common/zod.pipe';
+import { CoversService } from './covers.service';
 import { type FolderView, FoldersService } from './folders.service';
 import { type ItemView, ItemsService } from './items.service';
-import { folderBodySchema, orderSchema, type UpdateItemInput, updateItemSchema } from './media.schemas';
+import { type CoverStartInput, coverStartSchema, folderBodySchema, orderSchema, type UpdateItemInput, updateItemSchema } from './media.schemas';
 
 // Every route needs a signed-in person (Admin or Staff); there is no @Roles because both may do everything here.
 @Controller('media')
@@ -13,6 +14,7 @@ export class MediaController {
   constructor(
     private readonly folders: FoldersService,
     private readonly items: ItemsService,
+    private readonly covers: CoversService,
   ) {}
 
   @Get('videos/folders')
@@ -60,5 +62,30 @@ export class MediaController {
     @Body(new ZodPipe(updateItemSchema)) body: UpdateItemInput,
   ): Promise<ItemView> {
     return this.items.update(actor, id, body);
+  }
+
+  @Post('items/:id/cover')
+  startCover(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(coverStartSchema)) body: CoverStartInput,
+  ) {
+    return this.covers.start(actor, id, body);
+  }
+
+  @Post('items/:id/cover/:fileId/complete')
+  @HttpCode(200)
+  completeCover(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+  ): Promise<ItemView> {
+    return this.covers.complete(actor, id, fileId);
+  }
+
+  @Post('items/:id/play')
+  @HttpCode(200)
+  play(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.items.play(actor, id);
   }
 }

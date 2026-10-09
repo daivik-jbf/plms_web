@@ -119,6 +119,20 @@ export class ItemsService {
     return this.list(actor, folderId);
   }
 
+  async play(actor: AuthUser, itemId: string): Promise<{ url: string; expiresAt: string; contentType: string }> {
+    const [row] = await this.rows(this.db, eq(mediaItems.id, itemId));
+    if (!row || !visibleTo(row.item, actor)) throw new NotFoundException(NOT_FOUND);
+    if (row.item.status !== 'ready') throw new ConflictException('This video is still uploading.');
+    const url = await this.storage.presignGet(row.video.storageKey, LINK_TTL_SECONDS, { contentType: row.video.contentType });
+    // Written only after the link exists, and every issued link is recorded (including a renewal while watching).
+    await this.audit.record(this.db, {
+      actor: actorOf(actor),
+      action: 'playback.played',
+      target: { type: 'video', id: itemId, label: row.item.title },
+    });
+    return { url, expiresAt: new Date(Date.now() + LINK_TTL_SECONDS * 1000).toISOString(), contentType: row.video.contentType };
+  }
+
   private async requireFolder(executor: DbExecutor, folderId: string, lock = false) {
     const query = executor.select().from(mediaFolders).where(eq(mediaFolders.id, folderId));
     const [folder] = lock ? await query.for('update') : await query;
