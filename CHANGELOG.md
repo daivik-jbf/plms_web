@@ -37,3 +37,16 @@ One line per meaningful change, newest last.
 - 2026-10-08: Final fix wave for milestone 2 (web): the Audit log page keeps keyboard focus after a search and moves it to the heading when the control used disappears (Retry, Clear filters, removing the person chip, the drawer link); a bad address shows plain words; impossible or half-typed dates are ignored; an unknown person in the address shows as "Unknown person"; the CSV download works in Safari.
 - 2026-10-08: Final fix wave for milestone 2 (components and pages): drawers keep their header while the body scrolls; tabs ignore Alt/Ctrl/Cmd shortcuts and the tab panel is focusable; confirm dialogs focus Cancel first; the loading skeleton has screen-reader text; the invite dialog focuses the right field every time (including Role); My account shows both password errors at once.
 - 2026-10-08: Corrected the milestone 2 notes: names are not editable, milestone 2 awaits approval, CI has not yet run remotely, and the audit API contract matches the final behaviour.
+- 2026-10-08: Added the milestone 3 design spec (Videos: upload, storage and playback).
+- 2026-10-09: Added the milestone 3 implementation plan.
+- 2026-10-09: Added the storage interface with Cloudflare R2, local development and in-memory drivers, the shared limits, signed expiring local links, and the `storage:check` script that proves a real bucket works.
+- 2026-10-09: Added the media tables (`files`, `media_folders`, `media_items`, migration 0003) and the 12 new audit actions for folders, videos, uploads and playback.
+- 2026-10-09: Added video folders: create, rename, list and reorder.
+- 2026-10-09: Added the videos list, edit and reorder.
+- 2026-10-09: Added the resumable upload API: start, piece links, resume, verification of size, type and first bytes on completion, and cancel.
+- 2026-10-09: Fixed upload completion races: media rows are locked in a fixed order (item before file) after a real deadlock was found, and an object that vanishes during verification answers 404 or 409 instead of 500.
+- 2026-10-09: Added cover images and one-hour playback links (every issued link is audited); a cover upload link is signed over its content type.
+- 2026-10-09: Added the cleanup of abandoned uploads (an hourly timer in the API and `npm run storage:cleanup`).
+- 2026-10-09: Added the Videos pages: folders, a folder's videos with the player, edit dialog and reordering, and the media API client.
+- 2026-10-09: Added the upload engine (three pieces at a time, retries with waits, resume), the app-wide upload manager and progress panel, the upload dialog and the list of unfinished uploads with Resume; Cancel is offered only while pieces are being sent.
+- 2026-10-09: Documented storage and the media API: the Cloudflare setup guide `docs/storage.md`, the contract `docs/api/media.md`, the 12 new audit actions in `docs/api/audit.md`, and the README, architecture notes and working-memory files.

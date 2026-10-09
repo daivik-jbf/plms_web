@@ -4,7 +4,7 @@ The source of truth is the design spec: `docs/superpowers/specs/2026-10-08-jbf-l
 
 ## Stack in one paragraph
 
-An npm workspaces monorepo. `apps/web` is a React + TypeScript single-page app built with Vite. `apps/api` is a NestJS 11 API (TypeScript, Express) that stores data in PostgreSQL 17 through Drizzle ORM with plain, versioned SQL migrations. One login serves both the portal and the mobile app: a short-lived access token (JWT, 15 minutes) plus a rotating refresh token (HttpOnly cookie for web, response body for mobile). Permissions are enforced on the server only: every route is private unless marked public, and role checks are explicit. Storage (S3-compatible) arrives in milestone 3.
+An npm workspaces monorepo. `apps/web` is a React + TypeScript single-page app built with Vite. `apps/api` is a NestJS 11 API (TypeScript, Express) that stores data in PostgreSQL 17 through Drizzle ORM with plain, versioned SQL migrations. One login serves both the portal and the mobile app: a short-lived access token (JWT, 15 minutes) plus a rotating refresh token (HttpOnly cookie for web, response body for mobile). Permissions are enforced on the server only: every route is private unless marked public, and role checks are explicit. Videos and cover images live in private S3-compatible storage (Cloudflare R2 in production); see "Files and storage" below.
 
 ## Module map (`apps/api/src`)
 
@@ -19,7 +19,9 @@ An npm workspaces monorepo. `apps/web` is a React + TypeScript single-page app b
 | `invites/` | Admin invites, preview and accept (no self-signup) |
 | `users/` | Admin user management: list, change role, deactivate, reactivate, with last-Admin protection |
 | `health/` | Liveness and readiness endpoints |
-| `cli/` | Command-line entry points: `migrate`, `create-admin` (first-Admin bootstrap) |
+| `storage/` | `StoragePort` (the one interface the rest of the API uses for files) and its drivers: `R2Storage` (AWS SDK v3 against R2's S3 API), `LocalStorage` (development only: files under `STORAGE_LOCAL_DIR`, signed expiring links) and, for tests, an in-memory fake kept under `apps/api/test/`. `dev-storage.controller.ts` serves the local driver's links (public routes under `/api/dev-storage/`, 404 unless the local driver is active). `signed-token.ts` signs and checks those links, `cors-check.ts` judges a bucket's browser permissions for the check script, `storage.module.ts` picks the driver from the environment |
+| `media/` | Videos (milestone 3): `folders.service.ts` (video folders and their order), `items.service.ts` (videos: list, edit, reorder, playback links), `uploads.service.ts` and `uploads.controller.ts` (the resumable upload flow with verification, resume and cancel), `covers.service.ts` (cover images), `upload-cleanup.service.ts` (abandoned uploads: an hourly timer inside the API), `discard.ts` and `file-checks.ts` (best-effort removal from storage; first-bytes checks and file-name cleaning), `media.schemas.ts` (request validation) |
+| `cli/` | Command-line entry points: `migrate`, `create-admin` (first-Admin bootstrap), `storage-check` (proves a real R2 bucket works), `storage-cleanup` (removes abandoned uploads now) |
 
 Global guards run in this order: rate limiting (`ThrottlerGuard`), authentication (`AuthGuard`, checks the database on every request), roles (`RolesGuard`).
 
@@ -31,16 +33,22 @@ Tests: unit tests sit beside their source as `*.spec.ts`; database and HTTP test
 | --- | --- |
 | `styles/` | Design tokens (`tokens.css`) and base styles |
 | `components/` | Shared components: `Button`, `TextField`, `Select`, `Alert`, `Badge`, `Tabs`, `Table`, `EmptyState`, `Skeleton`, `Dialog` (native `<dialog>`, modal or drawer) and `ConfirmDialog`; the app shell (`AppShell` with sidebar and top bar, `NavLinks`, `nav-items.ts`) and `AdminRoute` |
-| `api/` | `client.ts` (fetch wrapper, token refresh, error shape, file download) and typed calls: `auth.ts`, `staff.ts`, `audit.ts` |
+| `api/` | `client.ts` (fetch wrapper, token refresh, error shape, file download) and typed calls: `auth.ts`, `staff.ts`, `audit.ts`, `media.ts` |
 | `auth/` | `AuthContext` (session state and the sign-out notice) and `ProtectedRoute` |
 | `lib/` | Date and value formatting, file download helper |
-| `pages/` | Public: sign in, accept invite, forgot password, reset password, not found. Inside the shell: `DashboardPage`, `staff/` (Staff page), `audit/` (Audit log page, filters, table, details drawer), `account/` (My account) |
+| `pages/` | Public: sign in, accept invite, forgot password, reset password, not found. Inside the shell: `DashboardPage`, `staff/` (Staff page), `audit/` (Audit log page, filters, table, details drawer), `account/` (My account), `videos/` (Videos: the folders list, a folder's videos table, the upload, edit and folder dialogs, the player dialog and the resume list for unfinished uploads) |
+| `uploads/` | The upload engine and the app-wide upload manager: `engine.ts` (pieces sent three at a time with retries, waits and resume), `xhr.ts` (one piece sent with progress and its receipt read), `UploadsContext.tsx` (state that keeps uploads going while the person browses; memory only), `UploadPanel.tsx` (the progress panel in the corner), `limits.ts`, `duration.ts`, `describe-upload-error.ts`, `browser-deps.ts` |
 | `test/` | Test setup (dialog stand-ins for jsdom), a fetch mock and session helpers |
 
-Routes: `/login`, `/accept-invite`, `/forgot-password`, `/reset-password` are public. Everything else is inside `ProtectedRoute` and the `AppShell`: `/` and `/account` for everyone, `/staff` and `/audit` behind `AdminRoute` (Staff are redirected to `/`; the server enforces the rule regardless).
+Routes: `/login`, `/accept-invite`, `/forgot-password`, `/reset-password` are public. Everything else is inside `ProtectedRoute` and the `AppShell`: `/`, `/account`, `/videos` and `/videos/:folderId` for everyone, `/staff` and `/audit` behind `AdminRoute` (Staff are redirected to `/`; the server enforces the rule regardless).
+
+## Files and storage
+
+Videos and cover images are not kept on the API server. The browser sends a video straight to private storage in 16 MiB pieces, using temporary links (valid one hour) that the API hands out; it plays videos and shows covers through temporary links too. The API never carries video bytes: it owns the database rows (`files`, `media_folders`, `media_items`) and every check. When an upload is completed the API verifies the stored file itself (size, type and first bytes) and discards a mismatch, so nothing the browser claims is trusted. Storage calls happen outside database transactions, in an order that can be compensated, and the audit entry is written in the same transaction as the change it describes. In development a local driver stands in for Cloudflare R2 (and is refused in production); only `npm run storage:check` proves the real service. See `docs/storage.md` (setup) and `docs/api/media.md` (contract).
 
 ## Related documents
 
-- API contracts: `docs/api/auth.md`, `docs/api/audit.md`
+- API contracts: `docs/api/auth.md`, `docs/api/audit.md`, `docs/api/media.md`
+- Setting up file storage (Cloudflare R2): `docs/storage.md`
 - Decisions and their reasons: `DECISIONS.md`
 - Status: `PROGRESS.md`, `TASKS.md`

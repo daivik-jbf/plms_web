@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-10-08
+Last updated: 2026-10-09
 
 ## Done: milestone 1 (project setup, auth and audit foundation)
 
@@ -31,25 +31,34 @@ Last updated: 2026-10-08
 - Tests at the end of the build (before the final fix wave): 219 API tests and 146 web tests, all passing.
 - Final fix wave (after the whole-branch review): audit filters and cursor hardened (years 0001-9999, microsecond-exact date bounds, uppercase ids, a fixed UTC cursor text), export backpressure and client-disconnect handling, keyboard focus kept on the Audit log page, plain words for a bad address, and dialog, tabs, Staff and My account polish. Tests after the final fix wave: 243 API tests and 184 web tests, all passing.
 
+## Done: milestone 3 (Videos: upload, storage and playback; built, awaiting approval)
+
+- Storage: a `StoragePort` interface with three drivers: Cloudflare R2 (production, AWS SDK v3), a local development driver (files under `STORAGE_LOCAL_DIR`, signed expiring links served by public `/api/dev-storage/*` routes, refused in production) and an in-memory fake for tests. `npm run storage:check` proves a real bucket works (uploads, reads, pieces and the browser CORS permissions); `npm run storage:cleanup` and an hourly timer remove uploads left unfinished for 24 hours.
+- Database (migration `0003`): `files`, `media_folders`, `media_items`. 12 new audit actions (folders, videos, uploads, playback; the `content`, `files` and `playback` categories are now used), 29 known actions in all.
+- Media API under `/api/media` (15 routes, any signed-in person): video folders (create, rename, list, reorder), videos (list, edit, reorder), resumable uploads of MP4 files up to 2 GiB in 16 MiB pieces (start, piece links, resume, complete with server-side verification of size, type and first bytes, cancel, own unfinished uploads), cover images (JPEG, PNG or WebP up to 10 MiB) and one-hour playback links (every issued link is audited). A video is invisible to everyone but its uploader until it is ready.
+- Web: a Videos page (folders), a folder page (videos table with covers, player dialog, edit dialog, move up and down, unfinished uploads with Resume), an upload dialog, and an app-wide upload manager with a progress panel (three pieces at a time, retries with waits, offline waiting, warning before closing the tab).
+- Documentation: `docs/storage.md` (the Cloudflare setup guide, written for a first-time user), `docs/api/media.md` (the contract) and the 12 new actions in `docs/api/audit.md`.
+- Tests at the end of the build: 448 API tests (44 suites) and 309 web tests (37 files), all passing. Lint and both builds are clean. `npm audit --audit-level=high` exits 0 (24 moderate advisories, all in development tooling: `esbuild` through `drizzle-kit` and `sprintf-js` through `jest`/`ts-jest`).
+
 ## In progress
 
-Nothing in the build. The whole-branch review and the final fix wave are complete; milestone 2 is waiting for approval before the branch is merged.
+Nothing in the build. Milestone 3 is built and waiting for the user's approval (try an upload and a playback, see open items 19 and 20) before the branch is merged. `TASKS.md` stays unticked until then.
 
-## Next: milestone 3
+## Next: milestone 4
 
-Media upload and playback, end to end, on Videos (storage provider, upload limits and playback; see open item 3).
+Movies, Podcasts and Songs (reusing the milestone 3 upload and storage code) and the docked player.
 
 ## Open items and questions
 
-1. OpenAPI: the spec asks for a published OpenAPI document. Milestones 1 and 2 ship `docs/api/auth.md` and `docs/api/audit.md` by hand instead. Generating OpenAPI is proposed for milestone 6, alongside the sync endpoints. Needs confirmation.
+1. OpenAPI: the spec asks for a published OpenAPI document. Milestones 1 to 3 ship `docs/api/auth.md`, `docs/api/audit.md` and `docs/api/media.md` by hand instead; the generated document is still deferred to milestone 6. Generating OpenAPI is proposed for milestone 6, alongside the sync endpoints. Needs confirmation.
 2. Audit log database role: the restricted database role (INSERT and SELECT only) is deferred to milestone 7 deployment hardening. The append-only triggers already block updates and deletes for every role, but until then they are tamper-evident rather than tamper-proof against the table owner.
-3. Storage provider (Cloudflare R2 vs AWS S3) and the real upload size limits are still to be decided before milestone 3.
+3. Storage provider and limits: decided in milestone 3 (Cloudflare R2, 2 GiB per video, MP4 only; see `DECISIONS.md`). The Cloudflare account and bucket do not exist yet; see open item 19.
 4. Which SMTP provider will send invites and reset emails in production.
 5. The mobile app's framework, to confirm that the login contract in `docs/api/auth.md` fits it.
 6. Hosting: as built, the web app calls relative `/api/...` URLs, so the web app and the API must be served from the same origin (one host name with a reverse proxy sending `/api` to the API). Separate `app.` and `api.` subdomains are not supported yet; a `VITE_API_BASE` setting is future work.
 7. Development machine only: npm needs `NODE_EXTRA_CA_CERTS` pointing at an exported keychain certificate bundle (a local TLS-inspection issue on this machine, not a project issue). CI does not need it.
 8. The first Admin has NOT been created yet in the development database. Create it with `npm run admin:create -w @jbf/api -- <email> "<Full Name>"`.
-9. The manual browser check of the screens (responsive layout, focus ring, the Staff, Audit log and My account pages, dialogs and the drawer in Chrome and Safari) has not been done yet.
+9. The manual browser check of the screens (responsive layout, focus ring, the Staff, Audit log, My account and Videos pages, dialogs and the drawer in Chrome and Safari) has not been done yet.
 10. Milestone 7 (deployment): production deployments MUST set `NODE_ENV=production`. The `Secure` flag on the refresh cookie and the ban on the console mailer both depend on it.
 11. Login lockout reveals account existence: a locked real account answers 429 while an unknown email keeps answering 401, so existence can be inferred after 5 wrong guesses. Accepted trade-off; throttled per IP.
 12. Minor review notes from milestone 2: the final fix wave is complete. The review notes that were deliberately parked (not fixed) are listed in the milestone 2 review records.
@@ -57,5 +66,9 @@ Media upload and playback, end to end, on Videos (storage provider, upload limit
 14. The audit `q` search is a sequential scan. Fine at this size; add trigram indexes if audit volume grows.
 15. Audit archiving is not designed. The log only grows; decide on retention and archiving before it becomes large.
 16. Names in the audit log are joined at read time from the users table. This breaks (names disappear, labels remain) if users are ever hard-deleted; today users are only deactivated.
-17. CI (`.github/workflows/ci.yml`) has not run remotely yet for milestone 2 (the branch has not been pushed). Lint, build and tests pass locally.
+17. CI (`.github/workflows/ci.yml`) has not run remotely yet for milestones 2 and 3 (nothing has been pushed). Lint, build and tests pass locally.
 18. On narrow screens tables switch to a stacked layout with CSS. Safari with VoiceOver may then stop treating them as tables (lost row and column semantics); consider explicit ARIA table roles later.
+19. The Cloudflare account and the R2 bucket do not exist yet, so `npm run storage:check -w @jbf/api` has never been run against real R2. Follow `docs/storage.md` and run it before relying on production uploads. Until then only the local and in-memory drivers have been exercised.
+20. The browser parts of milestone 3 (real `<video>` playback and seeking, `XMLHttpRequest` upload progress, the local development links through the Vite proxy, drag and keyboard use of the dialogs) were verified only with automated tests, not in a real browser. The user should try an upload (with a cover) and a playback in a browser, and the manual check in the milestone 3 plan.
+21. Accepted risk (ruling R8): a cover upload link, valid for one hour, stays usable after the cover is verified, so whoever obtained it (only a signed-in Staff or Admin can) can overwrite the stored cover until it expires. A later server-side copy on completion would close it. See `docs/storage.md` and `DECISIONS.md`.
+22. Milestone 3 has no delete: cancelling an unfinished upload and replacing a cover are the only removals. Deleting videos, the Trash and restore arrive in milestone 6; replacing a video's file is later.

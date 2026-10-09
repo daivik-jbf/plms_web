@@ -1,6 +1,6 @@
-# JBF LMS API: audit log (milestone 2)
+# JBF LMS API: audit log (milestones 2 and 3)
 
-This is the hand-written contract for the audit log read side, written from the code (`apps/api/src/audit/`) and its end-to-end tests (`apps/api/test/audit*.e2e-spec.ts`). Authentication, token handling, the error body shape and the rate-limit rules are described in `docs/api/auth.md`; this page only adds what is specific to the audit log. A generated OpenAPI document is still planned for milestone 6 (see `PROGRESS.md`).
+This is the hand-written contract for the audit log read side, written from the code (`apps/api/src/audit/`) and its end-to-end tests (`apps/api/test/audit*.e2e-spec.ts`). Authentication, token handling, the error body shape and the rate-limit rules are described in `docs/api/auth.md`; this page only adds what is specific to the audit log. Milestone 3 added 12 actions for folders, videos, uploads and playback (see the table below); the endpoints that write them are described in `docs/api/media.md`. A generated OpenAPI document is still planned for milestone 6 (see `PROGRESS.md`).
 
 - Base path: every route starts with `/api`.
 - Access: **Admin only**. No token gives 401 (`Unauthorized`). A Staff token gives 403 (`You do not have permission to do that.`). The server enforces this on all three endpoints; hiding the pages in the web app is only a convenience.
@@ -27,7 +27,7 @@ All parameters are optional. Unknown parameters are ignored. A value that fails 
 | `actorId` | UUID (upper or lower case) | none | Only entries performed by this user |
 | `involving` | UUID (upper or lower case) | none | Entries performed by this user **or** done to this user (the target is a user with this id). Invite targets are not matched, even if the id is the same |
 | `category` | `accounts`, `content`, `files` or `playback` | none | Only entries in this category (see the table below) |
-| `action` | one of the 17 known actions listed below | none | Only entries with exactly this action. Any other value gives 400 `fieldErrors.action` |
+| `action` | one of the 29 known actions listed below | none | Only entries with exactly this action. Any other value gives 400 `fieldErrors.action` |
 | `from` | ISO 8601 date-time with a `Z` or an offset, for example `2026-03-02T00:00:00.000Z`; the year must be 0001 to 9999; up to microsecond precision is kept | none | Only entries at or after this instant (inclusive). A bare date such as `2026-03-02` is rejected, and so is year `0000` (400 `fieldErrors.from`) |
 | `to` | same format and year range as `from` | none | Only entries at or before this instant (inclusive) |
 | `q` | text, trimmed, at most 100 characters | none | Case-insensitive "contains" search over the actor label (the email or typed text), the target label, the action name, and the actor's and target's names. `%` and `_` are matched literally (they are not wildcards). An empty or all-space value is ignored |
@@ -36,8 +36,8 @@ All parameters are optional. Unknown parameters are ignored. A value that fails 
 Notes:
 
 - Filters combine with AND.
-- Known actions: `auth.login.succeeded`, `auth.login.failed`, `auth.logout`, `auth.logout_all`, `auth.refresh.reuse_detected`, `auth.password.changed`, `auth.password.reset_requested`, `auth.password.reset_completed`, `invite.created`, `invite.resent`, `invite.cancelled`, `invite.accepted`, `user.deactivated`, `user.reactivated`, `user.role_changed`, `audit.viewed`, `audit.exported`. The `action` filter accepts only these, even though the log can later contain others (see "Unknown actions").
-- Categories come from the part of the action before the first dot: `content.*` is `content`, `file.*` is `files`, `playback.*` and `download.*` are `playback`, and everything else is `accounts`. Today every known action is `accounts`; the other categories are ready for later milestones.
+- Known actions: `auth.login.succeeded`, `auth.login.failed`, `auth.logout`, `auth.logout_all`, `auth.refresh.reuse_detected`, `auth.password.changed`, `auth.password.reset_requested`, `auth.password.reset_completed`, `invite.created`, `invite.resent`, `invite.cancelled`, `invite.accepted`, `user.deactivated`, `user.reactivated`, `user.role_changed`, `audit.viewed`, `audit.exported`, `content.folder.created`, `content.folder.renamed`, `content.folder.reordered`, `content.video.added`, `content.video.edited`, `content.video.reordered`, `content.video.cover_set`, `file.upload_started`, `file.upload_completed`, `file.upload_failed`, `file.upload_cancelled`, `playback.played`. The `action` filter accepts only these, even though the log can later contain others (see "Unknown actions").
+- Categories come from the part of the action before the first dot: `content.*` is `content`, `file.*` is `files`, `playback.*` and `download.*` are `playback`, and everything else is `accounts`. The sign-in, invite, user and audit actions are `accounts`; since milestone 3 the folder and video actions are `content`, the upload actions are `files` and `playback.played` is `playback`, so "Changes only" (the default) hides it. Upload failures and cancellations stay visible because they are `files` entries.
 
 ### Response (200)
 
@@ -64,7 +64,7 @@ Every entry has exactly these 16 fields (`null` where nothing applies):
 | `label` | string | Short human label, for example `Role changed` |
 | `tone` | `change`, `danger`, `warning`, `success` or `neutral` | Suggested styling |
 | `category` | `accounts`, `content`, `files` or `playback` | Category of the action |
-| `target` | object or `null` | What it was done to; `null` when the entry has no target. Fields: `type` (for example `user` or `invite`), `id` (string), `label` (string or `null`), `name` (the user's current name when the target is a user, else `null`) |
+| `target` | object or `null` | What it was done to; `null` when the entry has no target. Fields: `type` (for example `user`, `invite`, `video`, `folder`, `category` or `cover`), `id` (string), `label` (string or `null`), `name` (the user's current name when the target is a user, else `null`) |
 | `source` | string | `portal`, `mobile` or `system` |
 | `ip` | string or `null` | Client IP address |
 | `userAgent` | string or `null` | Client user agent |
@@ -74,7 +74,7 @@ Every entry has exactly these 16 fields (`null` where nothing applies):
 | `metadata` | object or `null` | Extra facts recorded with the action (for example `reason`, `rowCount`, `filters`) |
 | `summary` | string | A plain-English sentence generated by the server |
 
-Names are looked up when the page is read, so they show the person's current name, while `label` fields keep what was recorded at the time. Secrets (passwords, tokens) are never stored in the log, so none can appear here.
+Names are looked up when the page is read, so they show the person's current name, while `label` fields keep what was recorded at the time. Secrets (passwords, tokens) are never stored in the log, so none can appear here; the same goes for temporary storage links and storage keys: the media entries hold ids, titles and sizes only.
 
 Example entry (a role change):
 
@@ -140,6 +140,18 @@ The server generates `label`, `tone`, `category` and `summary` for every entry, 
 | `user.reactivated` | Reactivated | success | accounts | `<actor> reactivated <target>` |
 | `audit.viewed` | Viewed audit log | neutral | accounts | `<actor> opened the audit log` |
 | `audit.exported` | Exported audit log | neutral | accounts | `<actor> exported <n> audit log row(s)` (`row` when n is 1; from `metadata.rowCount`; without a count: `<actor> exported audit log rows`) |
+| `content.folder.created` | Folder created | change | content | `<actor> created the folder <target>` (the target is the folder name) |
+| `content.folder.renamed` | Folder renamed | change | content | `<actor> renamed the folder from <before> to <after>` (from `changes.name`; without them: `<actor> renamed the folder <target>`) |
+| `content.folder.reordered` | Folders reordered | neutral | content | `<actor> changed the order of the video folders` |
+| `content.video.added` | Video added | change | content | `<actor> added the video <target>` (the target is the video title) |
+| `content.video.edited` | Video edited | change | content | `<actor> edited the video <target>` (title and description before and after in `changes`) |
+| `content.video.reordered` | Videos reordered | neutral | content | `<actor> changed the order of the videos in <target>` (the target is the folder) |
+| `content.video.cover_set` | Cover set | change | content | `<actor> set the cover image of <target>` |
+| `file.upload_started` | Upload started | neutral | files | `<actor> started uploading <target>` (metadata: `fileId`, `sizeBytes`, `partCount`) |
+| `file.upload_completed` | Upload finished | success | files | `<actor> finished uploading <target>` |
+| `file.upload_failed` | Upload failed | warning | files | `The upload of <target> failed (<reason>)`. Reasons (from `metadata.reason`): `size_mismatch` is "the file size did not match", `not_mp4` is "the file is not a valid MP4", `bad_image` is "the cover image is not valid", `expired` is "it was not finished within 24 hours"; with no recognised reason: `The upload of <target> failed`. An `expired` entry has no actor (the system cleans up abandoned uploads) |
+| `file.upload_cancelled` | Upload cancelled | neutral | files | `<actor> cancelled the upload of <target>` |
+| `playback.played` | Played | neutral | playback | `<actor> played <target>` (one entry for every playback link issued, including renewals) |
 
 Unknown actions: an action that is not in the table (for example one written by a later milestone) is still returned. `label` is the raw action name, `tone` is `neutral`, `category` follows the prefix rule above, and `summary` is `<actor> performed <action>`. Clients should treat `tone` and `category` as closed sets but never assume `action` is a closed set.
 
