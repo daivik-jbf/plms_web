@@ -175,6 +175,28 @@ describe('UploadsProvider', () => {
       await expect(act(() => value.resume(pending, new File([new Uint8Array(11)], 'clip.mp4', { type: 'video/mp4' })))).rejects.toThrow(/clip\.mp4/);
     });
 
+    it.each([
+      ['a narrow no-break space', 'Screen Recording 10.00.00\u202fAM.mp4', 'Screen Recording 10.00.00 AM.mp4'],
+      ['a double space', 'My  talk.mp4', 'My talk.mp4'],
+    ])('accepts the same file when its name differs only by %s that the server tidied', async (_label, rawName, storedName) => {
+      const calls = startServer({
+        'GET /api/media/uploads/u1': {
+          body: { fileId: 'u1', itemId: 'v1', status: 'pending', partSize: 4, partCount: 3, uploadedParts: [] },
+        },
+      });
+      setup();
+      await act(() => value.resume({ ...pending, fileName: storedName }, new File([new Uint8Array(10)], rawName, { type: 'video/mp4' })));
+      expect(await screen.findByText('Fire exits:done:10:false:')).toBeInTheDocument();
+      expect(calls.some((call) => call.key === 'POST /api/media/uploads/u1/complete')).toBe(true);
+    });
+
+    it('still refuses a name that differs after tidying, and shows the stored name', async () => {
+      startServer();
+      setup();
+      const stored = { ...pending, fileName: 'My talk.mp4' };
+      await expect(act(() => value.resume(stored, new File([new Uint8Array(10)], 'My  other talk.mp4', { type: 'video/mp4' })))).rejects.toThrow(/"My talk\.mp4"/);
+    });
+
     it('sends only the missing pieces and completes with the stored receipts as well', async () => {
       const calls = startServer({
         'GET /api/media/uploads/u1': {

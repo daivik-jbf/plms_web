@@ -13,6 +13,7 @@ import { formatBytes } from '../lib/format';
 import { createBrowserDeps } from './browser-deps';
 import { describeUploadError } from './describe-upload-error';
 import { uploadPieces } from './engine';
+import { sanitizeFileName } from './sanitize-file-name';
 
 export type UploadStatus = 'sending' | 'finishing' | 'done' | 'failed';
 
@@ -220,7 +221,8 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
 
   const resume = useCallback(
     async (pending: PendingUpload, file: File) => {
-      if (file.name !== pending.fileName || file.size !== pending.sizeBytes) throw new FileMismatchError(pending);
+      // The server keeps a tidied name, so compare the tidied name of the chosen file.
+      if (sanitizeFileName(file.name) !== pending.fileName || file.size !== pending.sizeBytes) throw new FileMismatchError(pending);
       if (controllers.current.has(pending.fileId) || resuming.current.has(pending.fileId)) return;
       resuming.current.add(pending.fileId);
       try {

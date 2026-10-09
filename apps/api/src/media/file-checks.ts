@@ -1,4 +1,6 @@
 // Display-only: nothing derived from a file name is ever used as a storage path.
+// The web app keeps an exact copy (apps/web/src/uploads/sanitize-file-name.ts) so it can recognise the stored
+// name when resuming. The two copies must stay identical.
 export function sanitizeFileName(input: string): string {
   const cleaned = input
     .replace(/[\p{Cc}\\/]+/gu, ' ')
