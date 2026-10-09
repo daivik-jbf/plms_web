@@ -8,23 +8,34 @@ import {
   VIDEO_CONTENT_TYPE,
 } from '../storage/storage.constants';
 
+// Postgres cannot store a NUL character in text, so refuse it up front rather than fail with a server error.
+const hasNoNul = (value: string): boolean => !value.includes('\u0000');
+const NUL_MESSAGE = 'Remove the invalid character.';
+
 export const folderNameSchema = z
   .string('Enter a folder name.')
   .trim()
   .min(1, 'Enter a folder name.')
-  .max(100, 'Folder name must be 100 characters or fewer.');
+  .max(100, 'Folder name must be 100 characters or fewer.')
+  .refine(hasNoNul, NUL_MESSAGE);
 
 export const folderBodySchema = z.object({ name: folderNameSchema });
 
 export const orderSchema = z.object({ ids: z.array(z.uuid()).max(2000) });
 
-export const titleSchema = z.string('Enter a title.').trim().min(1, 'Enter a title.').max(200, 'Title must be 200 characters or fewer.');
+export const titleSchema = z
+  .string('Enter a title.')
+  .trim()
+  .min(1, 'Enter a title.')
+  .max(200, 'Title must be 200 characters or fewer.')
+  .refine(hasNoNul, NUL_MESSAGE);
 
 // An empty description means "no description".
 export const descriptionSchema = z
   .string()
   .trim()
   .max(2000, 'Description must be 2,000 characters or fewer.')
+  .refine(hasNoNul, NUL_MESSAGE)
   .transform((value) => (value === '' ? null : value));
 
 export const updateItemSchema = z
@@ -37,7 +48,7 @@ export const startUploadSchema = z.object({
   folderId: z.uuid(),
   title: titleSchema,
   description: descriptionSchema.nullish(),
-  fileName: z.string().min(1, 'The file needs a name.').max(1000),
+  fileName: z.string().min(1, 'The file needs a name.').max(1000).refine(hasNoNul, NUL_MESSAGE),
   contentType: z
     .string()
     .refine((value) => value === VIDEO_CONTENT_TYPE, 'Only MP4 videos can be uploaded. Convert the file to MP4 first (for example with HandBrake).'),

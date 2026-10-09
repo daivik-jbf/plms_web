@@ -52,6 +52,8 @@ describe('media folders', () => {
       expect(res.body.fieldErrors.name).toBeDefined();
     }
     await http().post('/api/media/videos/folders').set(...bearer(session)).send({}).expect(400);
+    const nul = await http().post('/api/media/videos/folders').set(...bearer(session)).send({ name: 'a\u0000b' }).expect(400);
+    expect(nul.body.fieldErrors.name).toBeDefined();
     await http().post('/api/media/videos/folders').set(...bearer(session)).send({ name: 'x'.repeat(100) }).expect(201);
   });
 
@@ -97,18 +99,26 @@ describe('media folders', () => {
   });
 
   it('reorders when given exactly the current folders, and audits only a real change', async () => {
-    const { session } = await signIn(app, db);
+    const { user, session } = await signIn(app, db);
     await createFolderViaApi(app, session);
     const current = (await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body as { id: string }[];
+    const reorderedEntries = () => db.select().from(auditLog).where(eq(auditLog.action, 'content.folder.reordered'));
+    const beforeReal = await reorderedEntries();
     const reversed = current.map((folder) => folder.id).reverse();
     const res = await http().put('/api/media/videos/folders/order').set(...bearer(session)).send({ ids: reversed }).expect(200);
     expect(res.body.map((folder: { id: string }) => folder.id)).toEqual(reversed);
     const after = (await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body as { id: string }[];
     expect(after.map((folder) => folder.id)).toEqual(reversed);
 
-    const before = await db.select().from(auditLog).where(eq(auditLog.action, 'content.folder.reordered'));
+    const afterReal = await reorderedEntries();
+    expect(afterReal).toHaveLength(beforeReal.length + 1);
+    const known = new Set(beforeReal.map((entry) => entry.id));
+    const added = afterReal.filter((entry) => !known.has(entry.id));
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({ actorId: user.id, targetType: 'category', targetId: 'video' });
+
     await http().put('/api/media/videos/folders/order').set(...bearer(session)).send({ ids: reversed }).expect(200);
-    expect(await db.select().from(auditLog).where(eq(auditLog.action, 'content.folder.reordered'))).toHaveLength(before.length);
+    expect(await reorderedEntries()).toHaveLength(afterReal.length);
   });
 
   it('refuses an order that is missing, adds, repeats or invents a folder', async () => {
