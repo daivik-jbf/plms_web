@@ -4,6 +4,9 @@ export const PART_SIZE = 16 * 1024 ** 2;
 export const MIN_PART_SIZE = 5 * 1024 ** 2;
 export const MAX_COVER_BYTES = 10 * 1024 ** 2;
 export const VIDEO_CONTENT_TYPE = 'video/mp4';
+export const MAX_AUDIO_BYTES = 500 * 1024 ** 2;
+// MP3 and M4A. Raw AAC (ADTS) and other formats are not accepted.
+export const AUDIO_CONTENT_TYPES = ['audio/mpeg', 'audio/mp4'] as const;
 export const COVER_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const LINK_TTL_SECONDS = 3600;
 export const MAX_PART_URLS_PER_REQUEST = 16;

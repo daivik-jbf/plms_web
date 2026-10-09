@@ -32,3 +32,21 @@ export function imageMatches(bytes: Uint8Array, contentType: string): boolean {
       return false;
   }
 }
+
+// An MP3 starts with an ID3 tag, or straight away with an MPEG audio frame: byte 0 is FF and the top three bits of
+// byte 1 are set (the frame sync).
+export const hasMp3Signature = (bytes: Uint8Array): boolean =>
+  startsWith(bytes, 0, ascii('ID3')) || (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0);
+
+// MP3 by its own signature. An M4A is an MP4 container, so it starts with the same "ftyp" box as a video; the declared
+// type and the folder's category decide what is accepted.
+export function audioMatches(bytes: Uint8Array, contentType: string): boolean {
+  switch (contentType) {
+    case 'audio/mpeg':
+      return hasMp3Signature(bytes);
+    case 'audio/mp4':
+      return hasMp4Signature(bytes);
+    default:
+      return false;
+  }
+}

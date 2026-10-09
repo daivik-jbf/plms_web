@@ -9,7 +9,7 @@ import { type LinkPayload, signLink, verifyLink } from './signed-token';
 import { type ObjectInfo, type StoragePort, StorageError, type StoredPart } from './storage.port';
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-const KEY_PATTERN = new RegExp(`^(videos|covers)/${UUID}$`);
+const KEY_PATTERN = new RegExp(`^(videos|audio|covers)/${UUID}$`);
 const UPLOAD_ID_PATTERN = new RegExp(`^${UUID}$`);
 
 export class LinkTooLargeError extends Error {}

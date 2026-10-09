@@ -127,6 +127,17 @@ describe('LocalStorage development routes', () => {
     await expect(storage.createMultipartUpload('videos/not-a-uuid', 'video/mp4')).rejects.toThrow('Invalid storage key');
   });
 
+  it('accepts audio keys and still refuses audio-looking keys that could escape or are not exact', async () => {
+    const k = `audio/${randomUUID()}`;
+    const uploadId = await storage.createMultipartUpload(k, 'audio/mpeg');
+    await storage.abortMultipartUpload(k, uploadId);
+    await expect(storage.head('audio/../videos/x')).rejects.toThrow('Invalid storage key');
+    await expect(storage.presignGet(`audio/${randomUUID()}/../../x`, 60, { contentType: 'audio/mpeg' })).rejects.toThrow('Invalid storage key');
+    await expect(storage.createMultipartUpload(`audios/${randomUUID()}`, 'audio/mpeg')).rejects.toThrow('Invalid storage key');
+    await expect(storage.createMultipartUpload(`AUDIO/${randomUUID()}`, 'audio/mpeg')).rejects.toThrow('Invalid storage key');
+    await expect(storage.createMultipartUpload('audio/not-a-uuid', 'audio/mpeg')).rejects.toThrow('Invalid storage key');
+  });
+
   it('answers 416 for a range outside the file and supports open and suffix ranges', async () => {
     const k = key();
     const uploadId = await storage.createMultipartUpload(k, 'video/mp4');

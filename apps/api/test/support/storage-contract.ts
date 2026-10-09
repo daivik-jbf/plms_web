@@ -12,7 +12,7 @@ export interface StorageHarness {
 
 const filled = (length: number, value: number): Uint8Array => new Uint8Array(length).fill(value);
 const text = (value: string): Uint8Array => new TextEncoder().encode(value);
-const newKey = (prefix: 'videos' | 'covers' = 'videos'): string => `${prefix}/${randomUUID()}`;
+const newKey = (prefix: 'videos' | 'covers' | 'audio' = 'videos'): string => `${prefix}/${randomUUID()}`;
 
 export function describeStorageContract(name: string, create: () => Promise<StorageHarness>): void {
   describe(`storage contract: ${name}`, () => {
@@ -134,6 +134,20 @@ export function describeStorageContract(name: string, create: () => Promise<Stor
       const slice = await harness.get(url, { start: 2, end: 5 });
       expect(slice.status).toBe(206);
       expect(new TextDecoder().decode(slice.body)).toBe('2345');
+    });
+
+    it('stores and serves an audio file under an audio/ key', async () => {
+      const { storage } = harness;
+      const key = newKey('audio');
+      const bytes = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0]);
+      const uploadId = await storage.createMultipartUpload(key, 'audio/mpeg');
+      const piece = await uploadPiece(key, uploadId, 1, bytes);
+      await storage.completeMultipartUpload(key, uploadId, [piece]);
+      expect(await storage.head(key)).toEqual({ size: 6, contentType: 'audio/mpeg' });
+      const read = await harness.get(await storage.presignGet(key, 3600, { contentType: 'audio/mpeg' }));
+      expect(read.status).toBe(200);
+      expect(read.contentType).toMatch(/^audio\/mpeg/);
+      expect(Array.from(read.body)).toEqual(Array.from(bytes));
     });
   });
 }
