@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { Database } from '../../src/db/db.module';
-import { type MediaFolder, mediaFolders, type Role, type User } from '../../src/db/schema';
+import { files, type MediaFolder, mediaFolders, mediaItems, type Role, type User } from '../../src/db/schema';
+import type { InMemoryStorage } from '../support/in-memory-storage';
 import { bearer, loginMobile, type Session } from './auth';
 import { createUser } from './users';
 
@@ -25,4 +26,77 @@ export async function createFolderViaApi(
 export async function seedFolder(db: Database, createdBy: string, name = uniqueName()): Promise<MediaFolder> {
   const [folder] = await db.insert(mediaFolders).values({ category: 'video', name, position: 0, createdBy }).returning();
   return folder;
+}
+
+const bytes = (size: number, start: number[]): Uint8Array => {
+  const out = new Uint8Array(Math.max(size, start.length)).fill(7);
+  out.set(start);
+  return out;
+};
+
+// The first bytes the server checks for, followed by filler.
+export const mp4Bytes = (size = 64): Uint8Array => bytes(size, [0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]);
+export const jpegBytes = (size = 64): Uint8Array => bytes(size, [0xff, 0xd8, 0xff, 0xe0]);
+export const pngBytes = (size = 64): Uint8Array => bytes(size, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+export const webpBytes = (size = 64): Uint8Array => bytes(size, [0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50]);
+
+export interface SeedItemOptions {
+  folderId: string;
+  createdBy: string;
+  title?: string;
+  description?: string | null;
+  status?: 'uploading' | 'ready';
+  sizeBytes?: number;
+  position?: number;
+  durationSeconds?: number | null;
+  storage?: InMemoryStorage; // when given, the video and cover bytes are put into it
+  withCover?: boolean;
+}
+
+export async function seedItem(db: Database, options: SeedItemOptions) {
+  const status = options.status ?? 'ready';
+  const storageKey = `videos/${randomUUID()}`;
+  const bytesToStore = mp4Bytes(options.sizeBytes ?? 64);
+  const [video] = await db
+    .insert(files)
+    .values({
+      purpose: 'video',
+      storageKey,
+      originalName: 'seed.mp4',
+      contentType: 'video/mp4',
+      sizeBytes: options.sizeBytes ?? 64,
+      status: status === 'ready' ? 'ready' : 'pending',
+      uploadId: status === 'ready' ? null : randomUUID(),
+      partSize: status === 'ready' ? null : 16_777_216,
+      partCount: status === 'ready' ? null : 1,
+      uploadedBy: options.createdBy,
+      completedAt: status === 'ready' ? new Date() : null,
+    })
+    .returning();
+  if (status === 'ready') options.storage?.seed(storageKey, bytesToStore, 'video/mp4');
+  let coverFileId: string | null = null;
+  if (options.withCover) {
+    const coverKey = `covers/${randomUUID()}`;
+    const [cover] = await db
+      .insert(files)
+      .values({ purpose: 'cover', storageKey: coverKey, originalName: 'cover', contentType: 'image/png', sizeBytes: 64, status: 'ready', uploadedBy: options.createdBy, completedAt: new Date() })
+      .returning();
+    options.storage?.seed(coverKey, pngBytes(), 'image/png');
+    coverFileId = cover.id;
+  }
+  const [item] = await db
+    .insert(mediaItems)
+    .values({
+      folderId: options.folderId,
+      title: options.title ?? `Video ${randomUUID().slice(0, 8)}`,
+      description: options.description ?? null,
+      position: options.position ?? 0,
+      videoFileId: video.id,
+      coverFileId,
+      durationSeconds: options.durationSeconds ?? null,
+      status,
+      createdBy: options.createdBy,
+    })
+    .returning();
+  return { itemId: item.id, fileId: video.id, storageKey, coverFileId };
 }

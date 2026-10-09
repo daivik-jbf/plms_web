@@ -4,12 +4,16 @@ import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodPipe } from '../common/zod.pipe';
 import { type FolderView, FoldersService } from './folders.service';
-import { folderBodySchema, orderSchema } from './media.schemas';
+import { type ItemView, ItemsService } from './items.service';
+import { folderBodySchema, orderSchema, type UpdateItemInput, updateItemSchema } from './media.schemas';
 
 // Every route needs a signed-in person (Admin or Staff); there is no @Roles because both may do everything here.
 @Controller('media')
 export class MediaController {
-  constructor(private readonly folders: FoldersService) {}
+  constructor(
+    private readonly folders: FoldersService,
+    private readonly items: ItemsService,
+  ) {}
 
   @Get('videos/folders')
   listFolders(): Promise<FolderView[]> {
@@ -33,5 +37,28 @@ export class MediaController {
     @Body(new ZodPipe(folderBodySchema)) body: z.infer<typeof folderBodySchema>,
   ): Promise<FolderView> {
     return this.folders.rename(actor, id, body.name);
+  }
+
+  @Get('folders/:id/items')
+  listItems(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<ItemView[]> {
+    return this.items.list(actor, id);
+  }
+
+  @Put('folders/:id/items/order')
+  reorderItems(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(orderSchema)) body: z.infer<typeof orderSchema>,
+  ): Promise<ItemView[]> {
+    return this.items.reorder(actor, id, body.ids);
+  }
+
+  @Patch('items/:id')
+  updateItem(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(updateItemSchema)) body: UpdateItemInput,
+  ): Promise<ItemView> {
+    return this.items.update(actor, id, body);
   }
 }
