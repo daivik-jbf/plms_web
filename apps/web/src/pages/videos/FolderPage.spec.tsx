@@ -1,11 +1,12 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StrictMode } from 'react';
+import { StrictMode, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Folder, VideoItem } from '../../api/media';
 import type { MockResponse } from '../../test/fetch-mock';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
+import { type UploadJob, UploadsContext, type UploadsValue } from '../../uploads/UploadsContext';
 import { FolderPage } from './FolderPage';
 
 const folder: Folder = { id: 'f1', name: 'Safety Training', position: 0, itemCount: 3 };
@@ -40,6 +41,7 @@ function startServer(overrides: Record<string, Override> = {}, items: VideoItem[
     if (override) return typeof override === 'function' ? override(body) : override;
     if (key === 'GET /api/media/videos/folders') return { body: folders };
     if (key === 'GET /api/media/folders/f1/items') return { body: state.items };
+    if (key === 'GET /api/media/uploads/mine') return { body: [] };
     const edit = /^PATCH \/api\/media\/items\/([^/]+)$/.exec(key);
     if (edit) {
       const target = state.items.find((candidate) => candidate.id === edit[1])!;
@@ -60,21 +62,39 @@ function startServer(overrides: Record<string, Override> = {}, items: VideoItem[
   return calls;
 }
 
-function renderPage(route = '/videos/f1') {
-  return renderWithSession(
-    <Routes>
-      <Route path="/videos/:folderId" element={<FolderPage />} />
-    </Routes>,
-    route,
+const fakeUploads = (overrides: Partial<UploadsValue> = {}): UploadsValue => ({
+  jobs: [],
+  finishedCount: 0,
+  start: vi.fn(async () => undefined),
+  resume: vi.fn(async () => undefined),
+  retry: vi.fn(async () => undefined),
+  cancel: vi.fn(async () => undefined),
+  dismiss: vi.fn(),
+  ...overrides,
+});
+
+let setUploads: (value: UploadsValue) => void = () => undefined;
+
+function UploadsHarness({ initial }: { initial: UploadsValue }) {
+  const [value, setValue] = useState(initial);
+  setUploads = setValue;
+  return (
+    <UploadsContext.Provider value={value}>
+      <Routes>
+        <Route path="/videos/:folderId" element={<FolderPage />} />
+      </Routes>
+    </UploadsContext.Provider>
   );
+}
+
+function renderPage(route = '/videos/f1', uploads: UploadsValue = fakeUploads()) {
+  return renderWithSession(<UploadsHarness initial={uploads} />, route);
 }
 
 function renderPageInStrictMode() {
   return renderWithSession(
     <StrictMode>
-      <Routes>
-        <Route path="/videos/:folderId" element={<FolderPage />} />
-      </Routes>
+      <UploadsHarness initial={fakeUploads()} />
     </StrictMode>,
     '/videos/f1',
   );
@@ -287,5 +307,28 @@ describe('FolderPage', () => {
     await waitFor(() => expect(video).toHaveAttribute('src', 'https://cdn.example/video-3?sig=1'));
     expect(plays).toBe(3);
     expect(within(dialog).queryByRole('alert')).toBeNull();
+  });
+
+  it('puts an Upload video button on the page that opens the upload dialog', async () => {
+    startServer();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Upload video' }));
+    expect(screen.getByRole('dialog', { name: 'Upload video' })).toBeInTheDocument();
+  });
+
+  it('shows the progress of a video being sent from this browser in its row', async () => {
+    startServer();
+    const job: UploadJob = { id: 'u3', itemId: 'v3', folderId: 'f1', title: 'x', fileName: 'x.mp4', sizeBytes: 100, bytesSent: 62, status: 'sending', message: null, coverWarning: false };
+    renderPage('/videos/f1', fakeUploads({ jobs: [job] }));
+    expect(await screen.findByText('Uploading 62%')).toBeInTheDocument();
+  });
+
+  it('reloads the list when a video finishes uploading', async () => {
+    const calls = startServer();
+    renderPage();
+    await screen.findByRole('heading', { name: 'Safety Training' });
+    const before = calls.filter((call) => call.key === 'GET /api/media/folders/f1/items').length;
+    act(() => setUploads(fakeUploads({ finishedCount: 1 })));
+    await waitFor(() => expect(calls.filter((call) => call.key === 'GET /api/media/folders/f1/items').length).toBe(before + 1));
   });
 });

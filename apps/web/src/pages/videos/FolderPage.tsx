@@ -6,8 +6,11 @@ import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
+import { useUploads } from '../../uploads/UploadsContext';
 import { EditVideoDialog } from './EditVideoDialog';
+import { PendingUploads } from './PendingUploads';
 import { PlayerDialog } from './PlayerDialog';
+import { UploadDialog } from './UploadDialog';
 import styles from './Videos.module.css';
 import { VideosTable } from './VideosTable';
 
@@ -15,6 +18,7 @@ type Notice = { tone: 'error' | 'success'; text: string };
 
 export function FolderPage() {
   const { folderId = '' } = useParams();
+  const uploads = useUploads();
   const [folder, setFolder] = useState<Folder | null>(null);
   const [items, setItems] = useState<VideoItem[] | null>(null);
   const [missing, setMissing] = useState(false);
@@ -23,6 +27,7 @@ export function FolderPage() {
   const [editing, setEditing] = useState<VideoItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -40,7 +45,13 @@ export function FolderPage() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, uploads.finishedCount]);
+
+  const progress = Object.fromEntries(
+    uploads.jobs
+      .filter((job) => job.folderId === folderId && job.status === 'sending' && job.sizeBytes > 0)
+      .map((job) => [job.itemId, Math.floor((100 * job.bytesSent) / job.sizeBytes)]),
+  );
 
   async function move(item: VideoItem, delta: -1 | 1) {
     if (!items) return;
@@ -76,6 +87,7 @@ export function FolderPage() {
       </nav>
       <div className={styles.header}>
         <h1>{folder?.name ?? 'Folder'}</h1>
+        <Button onClick={() => setUploading(true)}>Upload video</Button>
       </div>
 
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
@@ -98,10 +110,13 @@ export function FolderPage() {
       ) : items.length === 0 ? (
         <EmptyState title="No videos in this folder yet">Videos you upload here will appear in this list.</EmptyState>
       ) : (
-        <VideosTable items={items} busy={busy} progress={{}} onOpen={setPlaying} onEdit={setEditing} onMove={(item, delta) => void move(item, delta)} />
+        <VideosTable items={items} busy={busy} progress={progress} onOpen={setPlaying} onEdit={setEditing} onMove={(item, delta) => void move(item, delta)} />
       )}
 
+      <PendingUploads folderId={folderId} reloadKey={uploads.finishedCount} onChanged={() => void load()} />
+
       <PlayerDialog item={playing} onClose={() => setPlaying(null)} />
+      <UploadDialog open={uploading} folderId={folderId} onClose={() => setUploading(false)} onStarted={() => void load()} />
       <EditVideoDialog
         item={editing}
         onClose={() => setEditing(null)}
