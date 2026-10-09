@@ -11,6 +11,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AccountPage } from './pages/account/AccountPage';
 import { AuditPage } from './pages/audit/AuditPage';
 import { StaffPage } from './pages/staff/StaffPage';
+import { FolderPage } from './pages/videos/FolderPage';
 import { VideosPage } from './pages/videos/VideosPage';
 
 export function App() {
@@ -24,6 +25,7 @@ export function App() {
         <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/videos" element={<VideosPage />} />
+          <Route path="/videos/:folderId" element={<FolderPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route element={<AdminRoute />}>
             <Route path="/staff" element={<StaffPage />} />
