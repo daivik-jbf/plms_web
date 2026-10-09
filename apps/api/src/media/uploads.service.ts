@@ -9,18 +9,19 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import type { AuditAction } from '../audit/audit.actions';
 import type { AuthUser } from '../auth/auth.types';
 import { DB, type Database } from '../db/db.module';
 import { type FileRow, files, type MediaItem, mediaFolders, mediaItems } from '../db/schema';
-import { LINK_TTL_SECONDS, PART_SIZE, partCountFor, VIDEO_CONTENT_TYPE } from '../storage/storage.constants';
+import { LINK_TTL_SECONDS, PART_SIZE, partCountFor } from '../storage/storage.constants';
 import { STORAGE, StorageError, type StoragePort, type StoredPart } from '../storage/storage.port';
 import { actorOf } from './actor';
 import { discardStoredFile } from './discard';
-import { hasMp4Signature, sanitizeFileName } from './file-checks';
+import { sanitizeFileName } from './file-checks';
 import { type ItemView, ItemsService } from './items.service';
+import { kindOf, type MediaCategory, uploadFieldErrors } from './media-kinds';
 import type { StartUploadInput } from './media.schemas';
 import { type RemovedUnfinished, removeUnfinishedItem } from './remove-unfinished';
 
@@ -28,15 +29,17 @@ const GONE = 'This upload no longer exists.';
 const LOST_UPLOAD = 'This upload can no longer be continued. Cancel it and start again.';
 const MISSING_PIECES = 'Some pieces are missing. Resume the upload to send them.';
 const BAD_PIECES = 'Some pieces are missing or damaged. Resume the upload to send them again.';
-const FINISHED = 'This video has already finished uploading.';
+const FINISHED = 'This upload has already finished.';
 
 const FAILURE_MESSAGES = {
   size_mismatch: 'The uploaded file is not the size it was declared to be, so it was discarded. Please upload it again.',
   not_mp4: 'That file is not a valid MP4 video, so it was discarded. Convert it to MP4 first (for example with HandBrake).',
+  not_audio: 'That file is not a valid MP3 or M4A audio file, so it was discarded. Please choose another file.',
 } as const;
 
 type FailureReason = keyof typeof FAILURE_MESSAGES;
-type UploadRow = { file: FileRow; item: MediaItem };
+// The category is the item's folder's: it decides the kind of file (video or audio) and how it is checked.
+type UploadRow = { file: FileRow; item: MediaItem; category: MediaCategory };
 
 @Injectable()
 export class UploadsService {
@@ -51,15 +54,19 @@ export class UploadsService {
 
   async start(actor: AuthUser, input: StartUploadInput): Promise<{ itemId: string; fileId: string; partSize: number; partCount: number }> {
     const [folder] = await this.db
-      .select({ id: mediaFolders.id })
+      .select({ id: mediaFolders.id, category: mediaFolders.category })
       .from(mediaFolders)
-      .where(and(eq(mediaFolders.id, input.folderId), eq(mediaFolders.category, 'video')));
+      .where(eq(mediaFolders.id, input.folderId));
     if (!folder) throw new NotFoundException('Folder not found.');
+    // The folder decides what may be uploaded; nothing the browser says about the kind is trusted.
+    const fieldErrors = uploadFieldErrors(folder.category, input.contentType, input.sizeBytes);
+    if (fieldErrors) throw new BadRequestException({ error: 'Bad Request', message: 'Validation failed', fieldErrors });
+    const kind = kindOf(folder.category);
 
-    const key = `videos/${randomUUID()}`;
+    const key = `${kind.keyPrefix}/${randomUUID()}`;
     const partCount = partCountFor(input.sizeBytes);
     // Storage first, then the database: if the transaction fails the storage side is rolled back below.
-    const uploadId = await this.storage.createMultipartUpload(key, VIDEO_CONTENT_TYPE);
+    const uploadId = await this.storage.createMultipartUpload(key, input.contentType);
     try {
       return await this.db.transaction(async (tx) => {
         const [{ next }] = await tx
@@ -69,10 +76,10 @@ export class UploadsService {
         const [file] = await tx
           .insert(files)
           .values({
-            purpose: 'video',
+            purpose: kind.purpose,
             storageKey: key,
             originalName: sanitizeFileName(input.fileName),
-            contentType: VIDEO_CONTENT_TYPE,
+            contentType: input.contentType,
             sizeBytes: input.sizeBytes,
             uploadId,
             partSize: PART_SIZE,
@@ -96,7 +103,7 @@ export class UploadsService {
         await this.audit.record(tx, {
           actor: actorOf(actor),
           action: 'file.upload_started',
-          target: { type: 'video', id: item.id, label: item.title },
+          target: { type: folder.category, id: item.id, label: item.title },
           metadata: { fileId: file.id, sizeBytes: input.sizeBytes, partCount },
         });
         return { itemId: item.id, fileId: file.id, partSize: PART_SIZE, partCount };
@@ -135,7 +142,8 @@ export class UploadsService {
   }
 
   async complete(actor: AuthUser, fileId: string, parts: { partNumber: number; etag: string }[]): Promise<ItemView> {
-    const { file, item } = await this.load(fileId, actor);
+    const row = await this.load(fileId, actor);
+    const { file, item } = row;
     if (file.status === 'ready') return this.items.view(item.id, actor);
     if (!file.uploadId) throw new ConflictException(LOST_UPLOAD);
 
@@ -155,24 +163,26 @@ export class UploadsService {
 
     const info = await this.storage.head(file.storageKey);
     if (!info) return this.afterVanish(actor, fileId);
-    if (info.size !== file.sizeBytes) return this.fail(actor, { file, item }, 'size_mismatch');
+    if (info.size !== file.sizeBytes) return this.fail(actor, row, 'size_mismatch');
     // A cancel or the cleanup job can remove the object between the size check and this read.
     const head = await this.storage.readRange(file.storageKey, 0, 15).catch((error: unknown) => {
       if (error instanceof StorageError && error.code === 'not_found') return null;
       throw error;
     });
     if (!head) return this.afterVanish(actor, fileId);
-    if (info.contentType !== VIDEO_CONTENT_TYPE || !hasMp4Signature(head)) return this.fail(actor, { file, item }, 'not_mp4');
-    return this.finish(actor, { file, item });
+    // The stored type must be the declared one, and the first bytes must match it (MP4 "ftyp", an MP3 frame or ID3 tag).
+    const kind = kindOf(row.category);
+    if (info.contentType !== file.contentType || !kind.matches(head, file.contentType)) return this.fail(actor, row, kind.failureReason);
+    return this.finish(actor, row);
   }
 
   async cancel(actor: AuthUser, fileId: string): Promise<void> {
     const row = await this.load(fileId, actor);
-    if (row.file.status === 'ready') throw new ConflictException(`${FINISHED} Finished videos cannot be cancelled here.`);
+    if (row.file.status === 'ready') throw new ConflictException(`${FINISHED} Finished uploads cannot be cancelled here.`);
     const removed = await this.removePending(row, { actor, action: 'file.upload_cancelled', metadata: { fileId } });
     if (!removed) {
       const [current] = await this.db.select({ status: files.status }).from(files).where(eq(files.id, fileId));
-      if (current?.status === 'ready') throw new ConflictException(`${FINISHED} Finished videos cannot be cancelled here.`);
+      if (current?.status === 'ready') throw new ConflictException(`${FINISHED} Finished uploads cannot be cancelled here.`);
       return;
     }
     await this.discardRemoved(row.file, removed);
@@ -191,16 +201,18 @@ export class UploadsService {
       })
       .from(files)
       .innerJoin(mediaItems, eq(mediaItems.mediaFileId, files.id))
-      .where(and(eq(files.uploadedBy, actor.id), eq(files.purpose, 'video'), eq(files.status, 'pending')))
+      .where(and(eq(files.uploadedBy, actor.id), ne(files.purpose, 'cover'), eq(files.status, 'pending')))
       .orderBy(desc(files.createdAt));
   }
 
+  // The main file of an item: a video or an audio file, never a cover (covers have their own routes).
   private async load(fileId: string, actor: AuthUser): Promise<UploadRow> {
     const [row] = await this.db
-      .select({ file: files, item: mediaItems })
+      .select({ file: files, item: mediaItems, category: mediaFolders.category })
       .from(files)
       .innerJoin(mediaItems, eq(mediaItems.mediaFileId, files.id))
-      .where(and(eq(files.id, fileId), eq(files.purpose, 'video')));
+      .innerJoin(mediaFolders, eq(mediaFolders.id, mediaItems.folderId))
+      .where(and(eq(files.id, fileId), ne(files.purpose, 'cover')));
     if (!row) throw new NotFoundException('Upload not found.');
     if (row.file.uploadedBy !== actor.id && actor.role !== 'admin') throw new ForbiddenException('This upload belongs to someone else.');
     return row;
@@ -219,9 +231,9 @@ export class UploadsService {
   }
 
   // Removes the rows of a still-pending upload (and its cover) and records why. Returns null when someone else already
-  // removed it (or the upload finished meanwhile), so a ready video is never removed.
+  // removed it (or the upload finished meanwhile), so a ready item is never removed.
   private async removePending(
-    { file, item }: UploadRow,
+    { file, item, category }: UploadRow,
     outcome: { actor: AuthUser; action: AuditAction; metadata: Record<string, unknown> },
   ): Promise<RemovedUnfinished | null> {
     return this.db.transaction(async (tx) => {
@@ -230,7 +242,7 @@ export class UploadsService {
       await this.audit.record(tx, {
         actor: actorOf(outcome.actor),
         action: outcome.action,
-        target: { type: 'video', id: item.id, label: item.title },
+        target: { type: category, id: item.id, label: item.title },
         metadata: outcome.metadata,
       });
       return removed;
@@ -249,9 +261,9 @@ export class UploadsService {
     throw new UnprocessableEntityException(FAILURE_MESSAGES[reason]);
   }
 
-  private async finish(actor: AuthUser, { file, item }: UploadRow): Promise<ItemView> {
+  private async finish(actor: AuthUser, { file, item, category }: UploadRow): Promise<ItemView> {
     const outcome = await this.db.transaction(async (tx) => {
-      // Lock the video row first, as removePending does (it deletes the video row, then the file row): taking the
+      // Lock the item row first, as removePending does (it deletes the item row, then the file row): taking the
       // locks in the same order is what keeps a cancel and a finish that overlap from deadlocking.
       const [locked] = await tx.select({ status: mediaItems.status }).from(mediaItems).where(eq(mediaItems.id, item.id)).for('update');
       if (!locked) return 'gone' as const;
@@ -263,9 +275,9 @@ export class UploadsService {
       const now = new Date();
       await tx.update(files).set({ status: 'ready', uploadId: null, completedAt: now }).where(eq(files.id, file.id));
       await tx.update(mediaItems).set({ status: 'ready', position: end, updatedAt: now }).where(eq(mediaItems.id, item.id));
-      const target = { type: 'video', id: item.id, label: item.title };
+      const target = { type: category, id: item.id, label: item.title };
       await this.audit.record(tx, { actor: actorOf(actor), action: 'file.upload_completed', target, metadata: { fileId: file.id, sizeBytes: file.sizeBytes } });
-      await this.audit.record(tx, { actor: actorOf(actor), action: 'content.video.added', target, metadata: { folderId: item.folderId } });
+      await this.audit.record(tx, { actor: actorOf(actor), action: 'content.video.added', target, metadata: { folderId: item.folderId, category } });
       return 'done' as const;
     });
     if (outcome === 'gone') {

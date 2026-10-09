@@ -29,4 +29,13 @@ describe('media schemas and NUL characters', () => {
     expect(startUploadSchema.safeParse({ ...validUpload, fileName: 'a\u0000.mp4' }).success).toBe(false);
     expect(startUploadSchema.safeParse(validUpload).success).toBe(true);
   });
+
+  it('leaves the allowed type and size to the folder, but refuses a missing or NUL type and an empty file', () => {
+    expect(startUploadSchema.safeParse({ ...validUpload, contentType: 'audio/mpeg', sizeBytes: 524_288_001 }).success).toBe(true);
+    expect(startUploadSchema.safeParse({ ...validUpload, sizeBytes: 3 * 1024 ** 3 }).success).toBe(true);
+    expect(startUploadSchema.safeParse({ ...validUpload, contentType: '' }).success).toBe(false);
+    expect(startUploadSchema.safeParse({ ...validUpload, contentType: 'audio/mpeg\u0000' }).success).toBe(false);
+    expect(startUploadSchema.safeParse({ ...validUpload, sizeBytes: 0 }).success).toBe(false);
+    expect(startUploadSchema.safeParse({ ...validUpload, sizeBytes: 2 ** 60 }).success).toBe(false);
+  });
 });

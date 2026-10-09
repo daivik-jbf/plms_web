@@ -64,18 +64,18 @@ export class UploadCleanupService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Deletes the rows (and the cover of an unfinished video) only if the file is still pending, so a video that finished
-  // a moment ago is never touched. The video row goes before the file rows, the same order as a cancel and a finish use,
+  // Deletes the rows (and the cover of an unfinished item) only if the file is still pending, so an item that finished
+  // a moment ago is never touched. The item row goes before the file rows, the same order as a cancel and a finish use,
   // so they cannot deadlock. Returns null when nothing was removed.
   private expire(file: FileRow): Promise<Pick<RemovedUnfinished, 'cover'> | null> {
     return this.db.transaction(async (tx) => {
-      if (file.purpose === 'video') {
+      if (file.purpose !== 'cover') {
         const removed = await removeUnfinishedItem(tx, file.id);
         if (!removed) return null;
         await this.audit.record(tx, {
           actor: null,
           action: 'file.upload_failed',
-          target: { type: 'video', id: removed.item.id, label: removed.item.title },
+          target: { type: removed.item.category, id: removed.item.id, label: removed.item.title },
           metadata: { fileId: file.id, reason: 'expired' },
         });
         return { cover: removed.cover };

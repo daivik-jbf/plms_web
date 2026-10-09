@@ -44,6 +44,9 @@ export const mp4Bytes = (size = 64): Uint8Array => bytes(size, [0, 0, 0, 0x18, 0
 export const jpegBytes = (size = 64): Uint8Array => bytes(size, [0xff, 0xd8, 0xff, 0xe0]);
 export const pngBytes = (size = 64): Uint8Array => bytes(size, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 export const webpBytes = (size = 64): Uint8Array => bytes(size, [0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50]);
+export const mp3Bytes = (size = 64): Uint8Array => bytes(size, [0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]);
+export const mp3FrameBytes = (secondByte: number, size = 64): Uint8Array => bytes(size, [0xff, secondByte, 0x90, 0x64]);
+export const m4aBytes = (size = 64): Uint8Array => bytes(size, [0, 0, 0, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20]);
 
 export interface SeedItemOptions {
   folderId: string;

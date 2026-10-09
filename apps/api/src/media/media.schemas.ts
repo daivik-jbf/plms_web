@@ -1,12 +1,5 @@
 import { z } from 'zod';
-import {
-  COVER_CONTENT_TYPES,
-  MAX_COVER_BYTES,
-  MAX_PART_URLS_PER_REQUEST,
-  MAX_VIDEO_BYTES,
-  partCountFor,
-  VIDEO_CONTENT_TYPE,
-} from '../storage/storage.constants';
+import { COVER_CONTENT_TYPES, MAX_COVER_BYTES, MAX_PART_URLS_PER_REQUEST, MAX_VIDEO_BYTES, partCountFor } from '../storage/storage.constants';
 
 // Postgres cannot store a NUL character in text, so refuse it up front rather than fail with a server error.
 const hasNoNul = (value: string): boolean => !value.includes('\u0000');
@@ -49,14 +42,9 @@ export const startUploadSchema = z.object({
   title: titleSchema,
   description: descriptionSchema.nullish(),
   fileName: z.string().min(1, 'The file needs a name.').max(1000).refine(hasNoNul, NUL_MESSAGE),
-  contentType: z
-    .string()
-    .refine((value) => value === VIDEO_CONTENT_TYPE, 'Only MP4 videos can be uploaded. Convert the file to MP4 first (for example with HandBrake).'),
-  sizeBytes: z
-    .number('Choose a file.')
-    .int('Choose a file.')
-    .min(1, 'That file is empty.')
-    .max(MAX_VIDEO_BYTES, 'Videos can be at most 2 GB.'),
+  // Which types and sizes are allowed depends on the folder's category, so the service checks them (media-kinds.ts).
+  contentType: z.string().min(1, 'Choose a file.').max(100, 'Choose a file.').refine(hasNoNul, NUL_MESSAGE),
+  sizeBytes: z.number('Choose a file.').int('Choose a file.').min(1, 'That file is empty.'),
   durationSeconds: z.number().int().min(0).max(1_000_000).nullish(),
 });
 
