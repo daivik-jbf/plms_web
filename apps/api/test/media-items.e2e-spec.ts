@@ -6,7 +6,7 @@ import { auditLog } from '../src/db/schema';
 import type { InMemoryStorage } from './support/in-memory-storage';
 import { bearer } from './helpers/auth';
 import { createTestApp } from './helpers/app';
-import { seedFolder, seedItem, signIn } from './helpers/media';
+import { seedFolder, seedItem, signIn, uniqueName } from './helpers/media';
 
 describe('videos in a folder', () => {
   let app: NestExpressApplication;
@@ -55,6 +55,7 @@ describe('videos in a folder', () => {
       createdBy: { id: owner.user.id, name: 'Test User' },
       createdAt: expect.any(String),
       position: 0,
+      category: 'video',
     });
     expect(res.body[1].coverUrl).toBeNull();
     expect(res.body[1].sizeBytes).toBe(2048);
@@ -157,5 +158,15 @@ describe('videos in a folder', () => {
     await put({ ids: [a.itemId, elsewhere.itemId] }).expect(409);
     await put({ ids: ['x'] }).expect(400);
     await http().put('/api/media/folders/00000000-0000-4000-8000-000000000000/items/order').set(...bearer(owner.session)).send({ ids: [] }).expect(404);
+  });
+
+  it('says which category an item belongs to, from its folder', async () => {
+    const { owner } = await setup();
+    const songs = await seedFolder(db, owner.user.id, uniqueName('Songs'), 'song');
+    const { itemId } = await seedItem(db, { folderId: songs.id, createdBy: owner.user.id, storage });
+    const res = await http().get(`/api/media/folders/${songs.id}/items`).set(...bearer(owner.session)).expect(200);
+    expect(res.body).toEqual([expect.objectContaining({ id: itemId, category: 'song' })]);
+    const edited = await http().patch(`/api/media/items/${itemId}`).set(...bearer(owner.session)).send({ title: 'New' }).expect(200);
+    expect(edited.body.category).toBe('song');
   });
 });

@@ -1,5 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import request from 'supertest';
 import type { Database } from '../src/db/db.module';
 import { auditLog } from '../src/db/schema';
@@ -35,7 +35,7 @@ describe('media folders', () => {
     const first = await createFolderViaApi(app, session);
     const second = await createFolderViaApi(app, session);
     expect(second.position).toBeGreaterThan(first.position);
-    expect(first).toEqual({ id: expect.any(String), name: expect.any(String), position: expect.any(Number), itemCount: 0 });
+    expect(first).toEqual({ id: expect.any(String), name: expect.any(String), position: expect.any(Number), itemCount: 0, category: 'video' });
     const list = (await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body;
     const ids = list.map((folder: { id: string }) => folder.id);
     expect(ids.indexOf(first.id)).toBeLessThan(ids.indexOf(second.id));
@@ -134,5 +134,70 @@ describe('media folders', () => {
     await put({ ids: ['not-a-uuid'] }).expect(400);
     await put({ ids: 'x' }).expect(400);
     await put({}).expect(400);
+  });
+
+  describe('categories', () => {
+    it.each([
+      ['videos', 'video'],
+      ['movies', 'movie'],
+      ['podcasts', 'podcast'],
+      ['songs', 'song'],
+    ] as const)('creates, lists, renames and reorders %s folders, each marked with its category', async (slug, category) => {
+      const { session } = await signIn(app, db);
+      const first = await createFolderViaApi(app, session, uniqueName(), slug);
+      await createFolderViaApi(app, session, uniqueName(), slug);
+      expect(first).toEqual({ id: expect.any(String), name: expect.any(String), position: expect.any(Number), itemCount: 0, category });
+      const list = (await http().get(`/api/media/${slug}/folders`).set(...bearer(session)).expect(200)).body as { id: string; category: string }[];
+      expect(list.map((folder) => folder.id)).toContain(first.id);
+      expect(new Set(list.map((folder) => folder.category))).toEqual(new Set([category]));
+      const renamed = await http().patch(`/api/media/folders/${first.id}`).set(...bearer(session)).send({ name: uniqueName('Renamed') }).expect(200);
+      expect(renamed.body.category).toBe(category);
+      const reversed = list.map((folder) => folder.id).reverse();
+      const reordered = await http().put(`/api/media/${slug}/folders/order`).set(...bearer(session)).send({ ids: reversed }).expect(200);
+      expect(reordered.body.map((folder: { id: string }) => folder.id)).toEqual(reversed);
+    });
+
+    it("keeps each category's folders apart, and lets the same name exist in two categories", async () => {
+      const { session } = await signIn(app, db);
+      const name = uniqueName('Shared');
+      const song = await createFolderViaApi(app, session, name, 'songs');
+      const movie = await createFolderViaApi(app, session, name, 'movies');
+      const songs = ((await http().get('/api/media/songs/folders').set(...bearer(session)).expect(200)).body as { id: string }[]).map((f) => f.id);
+      const videos = ((await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body as { id: string }[]).map((f) => f.id);
+      expect(songs).toContain(song.id);
+      expect(songs).not.toContain(movie.id);
+      expect(videos).not.toContain(song.id);
+      expect(videos).not.toContain(movie.id);
+      await http().post('/api/media/songs/folders').set(...bearer(session)).send({ name: name.toUpperCase() }).expect(409);
+    });
+
+    it('answers 404 for any other category, after checking sign-in', async () => {
+      const { session } = await signIn(app, db);
+      for (const slug of ['music', 'video', 'Videos', 'SONGS', 'constructor', '__proto__', 'toString', 'folders']) {
+        await http().get(`/api/media/${slug}/folders`).set(...bearer(session)).expect(404);
+        await http().post(`/api/media/${slug}/folders`).set(...bearer(session)).send({ name: uniqueName() }).expect(404);
+        await http().put(`/api/media/${slug}/folders/order`).set(...bearer(session)).send({ ids: [] }).expect(404);
+      }
+      await http().get('/api/media/music/folders').expect(401);
+    });
+
+    it('records the category of every folder change and names it in a reorder', async () => {
+      const { user, session } = await signIn(app, db);
+      const created = await createFolderViaApi(app, session, uniqueName(), 'podcasts');
+      const [entry] = await auditFor('content.folder.created', created.id);
+      expect(entry).toMatchObject({ actorId: user.id, targetType: 'folder', metadata: { category: 'podcast' } });
+      await http().patch(`/api/media/folders/${created.id}`).set(...bearer(session)).send({ name: uniqueName('Renamed') }).expect(200);
+      expect((await auditFor('content.folder.renamed', created.id))[0].metadata).toEqual({ category: 'podcast' });
+      await createFolderViaApi(app, session, uniqueName(), 'podcasts');
+      const ids = ((await http().get('/api/media/podcasts/folders').set(...bearer(session)).expect(200)).body as { id: string }[]).map((f) => f.id).reverse();
+      await http().put('/api/media/podcasts/folders/order').set(...bearer(session)).send({ ids }).expect(200);
+      const [reordered] = await db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.action, 'content.folder.reordered'), eq(auditLog.targetId, 'podcast')))
+        .orderBy(desc(auditLog.occurredAt))
+        .limit(1);
+      expect(reordered).toMatchObject({ actorId: user.id, targetType: 'category', targetLabel: 'Podcast folders', metadata: { category: 'podcast' } });
+    });
   });
 });

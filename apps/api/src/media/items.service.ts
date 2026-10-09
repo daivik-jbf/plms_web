@@ -8,6 +8,7 @@ import { type AuditChanges, type FileRow, files, type MediaItem, mediaFolders, m
 import { LINK_TTL_SECONDS } from '../storage/storage.constants';
 import { STORAGE, type StoragePort } from '../storage/storage.port';
 import { actorOf } from './actor';
+import type { MediaCategory } from './media-kinds';
 import { ORDER_CHANGED_MESSAGE, type UpdateItemInput } from './media.schemas';
 
 export interface ItemView {
@@ -22,6 +23,7 @@ export interface ItemView {
   createdBy: { id: string; name: string };
   createdAt: Date;
   position: number;
+  category: MediaCategory;
 }
 
 interface ItemRow {
@@ -29,6 +31,7 @@ interface ItemRow {
   media: FileRow;
   cover: FileRow | null;
   creator: { id: string; name: string };
+  category: MediaCategory;
 }
 
 const NOT_FOUND = 'Video not found.';
@@ -142,9 +145,10 @@ export class ItemsService {
 
   private rows(executor: DbExecutor, where: SQL | undefined): Promise<ItemRow[]> {
     return executor
-      .select({ item: mediaItems, media: files, cover: coverFile, creator: { id: users.id, name: users.name } })
+      .select({ item: mediaItems, media: files, cover: coverFile, creator: { id: users.id, name: users.name }, category: mediaFolders.category })
       .from(mediaItems)
       .innerJoin(files, eq(files.id, mediaItems.mediaFileId))
+      .innerJoin(mediaFolders, eq(mediaFolders.id, mediaItems.folderId))
       .leftJoin(coverFile, eq(coverFile.id, mediaItems.coverFileId))
       .innerJoin(users, eq(users.id, mediaItems.createdBy))
       .where(where)
@@ -168,6 +172,7 @@ export class ItemsService {
       createdBy: row.creator,
       createdAt: row.item.createdAt,
       position: row.item.position,
+      category: row.category,
     };
   }
 }

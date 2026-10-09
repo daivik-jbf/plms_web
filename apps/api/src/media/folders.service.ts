@@ -6,9 +6,9 @@ import { DB, type Database, type DbExecutor } from '../db/db.module';
 import { isUniqueViolation } from '../db/errors';
 import { mediaFolders, mediaItems } from '../db/schema';
 import { actorOf } from './actor';
+import { MEDIA_CATEGORIES, type MediaCategory } from './media-kinds';
 import { ORDER_CHANGED_MESSAGE } from './media.schemas';
 
-const CATEGORY = 'video' as const;
 const NAME_TAKEN = 'A folder with that name already exists.';
 
 export interface FolderView {
@@ -16,6 +16,7 @@ export interface FolderView {
   name: string;
   position: number;
   itemCount: number;
+  category: MediaCategory;
 }
 
 @Injectable()
@@ -25,30 +26,31 @@ export class FoldersService {
     private readonly audit: AuditService,
   ) {}
 
-  list(executor: DbExecutor = this.db): Promise<FolderView[]> {
+  list(category: MediaCategory, executor: DbExecutor = this.db): Promise<FolderView[]> {
     return executor
       .select({
         id: mediaFolders.id,
         name: mediaFolders.name,
         position: mediaFolders.position,
         itemCount: sql<number>`count(${mediaItems.id}) filter (where ${mediaItems.status} = 'ready')`.mapWith(Number),
+        category: mediaFolders.category,
       })
       .from(mediaFolders)
       .leftJoin(mediaItems, eq(mediaItems.folderId, mediaFolders.id))
-      .where(eq(mediaFolders.category, CATEGORY))
+      .where(eq(mediaFolders.category, category))
       .groupBy(mediaFolders.id)
       .orderBy(asc(mediaFolders.position), asc(mediaFolders.createdAt), asc(mediaFolders.id));
   }
 
-  create(actor: AuthUser, name: string): Promise<FolderView> {
+  create(actor: AuthUser, category: MediaCategory, name: string): Promise<FolderView> {
     return this.db.transaction(async (tx) => {
       const [{ next }] = await tx
         .select({ next: sql<number>`coalesce(max(${mediaFolders.position}), -1) + 1`.mapWith(Number) })
         .from(mediaFolders)
-        .where(eq(mediaFolders.category, CATEGORY));
+        .where(eq(mediaFolders.category, category));
       let folder;
       try {
-        [folder] = await tx.insert(mediaFolders).values({ category: CATEGORY, name, position: next, createdBy: actor.id }).returning();
+        [folder] = await tx.insert(mediaFolders).values({ category, name, position: next, createdBy: actor.id }).returning();
       } catch (error) {
         if (isUniqueViolation(error)) throw new ConflictException(NAME_TAKEN);
         throw error;
@@ -57,8 +59,9 @@ export class FoldersService {
         actor: actorOf(actor),
         action: 'content.folder.created',
         target: { type: 'folder', id: folder.id, label: folder.name },
+        metadata: { category },
       });
-      return { id: folder.id, name: folder.name, position: folder.position, itemCount: 0 };
+      return { id: folder.id, name: folder.name, position: folder.position, itemCount: 0, category };
     });
   }
 
@@ -78,21 +81,22 @@ export class FoldersService {
           action: 'content.folder.renamed',
           target: { type: 'folder', id, label: name },
           changes: { name: { before: folder.name, after: name } },
+          metadata: { category: folder.category },
         });
       }
-      const view = (await this.list(tx)).find((candidate) => candidate.id === id);
+      const view = (await this.list(folder.category, tx)).find((candidate) => candidate.id === id);
       if (!view) throw new NotFoundException('Folder not found.');
       return view;
     });
   }
 
-  reorder(actor: AuthUser, ids: string[]): Promise<FolderView[]> {
+  reorder(actor: AuthUser, category: MediaCategory, ids: string[]): Promise<FolderView[]> {
     return this.db.transaction(async (tx) => {
       // Locked in id order so two people reordering at once cannot deadlock.
       const locked = await tx
         .select({ id: mediaFolders.id, position: mediaFolders.position, createdAt: mediaFolders.createdAt })
         .from(mediaFolders)
-        .where(eq(mediaFolders.category, CATEGORY))
+        .where(eq(mediaFolders.category, category))
         .orderBy(asc(mediaFolders.id))
         .for('update');
       const current = [...locked]
@@ -109,10 +113,11 @@ export class FoldersService {
         await this.audit.record(tx, {
           actor: actorOf(actor),
           action: 'content.folder.reordered',
-          target: { type: 'category', id: CATEGORY, label: 'Video folders' },
+          target: { type: 'category', id: category, label: `${MEDIA_CATEGORIES[category].label} folders` },
+          metadata: { category },
         });
       }
-      return this.list(tx);
+      return this.list(category, tx);
     });
   }
 }

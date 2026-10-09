@@ -3,9 +3,11 @@ import type { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodPipe } from '../common/zod.pipe';
+import { CategoryPipe } from './category.pipe';
 import { CoversService } from './covers.service';
 import { type FolderView, FoldersService } from './folders.service';
 import { type ItemView, ItemsService } from './items.service';
+import type { MediaCategory } from './media-kinds';
 import { type CoverStartInput, coverStartSchema, folderBodySchema, orderSchema, type UpdateItemInput, updateItemSchema } from './media.schemas';
 
 // Every route needs a signed-in person (Admin or Staff); there is no @Roles because both may do everything here.
@@ -17,19 +19,27 @@ export class MediaController {
     private readonly covers: CoversService,
   ) {}
 
-  @Get('videos/folders')
-  listFolders(): Promise<FolderView[]> {
-    return this.folders.list();
+  @Get(':category/folders')
+  listFolders(@Param('category', CategoryPipe) category: MediaCategory): Promise<FolderView[]> {
+    return this.folders.list(category);
   }
 
-  @Post('videos/folders')
-  createFolder(@CurrentUser() actor: AuthUser, @Body(new ZodPipe(folderBodySchema)) body: z.infer<typeof folderBodySchema>): Promise<FolderView> {
-    return this.folders.create(actor, body.name);
+  @Post(':category/folders')
+  createFolder(
+    @CurrentUser() actor: AuthUser,
+    @Param('category', CategoryPipe) category: MediaCategory,
+    @Body(new ZodPipe(folderBodySchema)) body: z.infer<typeof folderBodySchema>,
+  ): Promise<FolderView> {
+    return this.folders.create(actor, category, body.name);
   }
 
-  @Put('videos/folders/order')
-  reorderFolders(@CurrentUser() actor: AuthUser, @Body(new ZodPipe(orderSchema)) body: z.infer<typeof orderSchema>): Promise<FolderView[]> {
-    return this.folders.reorder(actor, body.ids);
+  @Put(':category/folders/order')
+  reorderFolders(
+    @CurrentUser() actor: AuthUser,
+    @Param('category', CategoryPipe) category: MediaCategory,
+    @Body(new ZodPipe(orderSchema)) body: z.infer<typeof orderSchema>,
+  ): Promise<FolderView[]> {
+    return this.folders.reorder(actor, category, body.ids);
   }
 
   @Patch('folders/:id')
