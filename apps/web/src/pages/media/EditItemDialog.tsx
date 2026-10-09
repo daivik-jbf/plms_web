@@ -10,16 +10,18 @@ import { checkCoverFile } from '../../uploads/limits';
 import styles from './Media.module.css';
 
 interface EditItemDialogProps {
+  // "video", "song", ...: the dialog is called "Edit song".
+  noun: string;
   item: MediaItem | null;
   onClose: () => void;
   // Called whenever something was saved, even if a later step failed, so the list never shows stale data.
   onChanged: () => void;
 }
 
-export function EditItemDialog({ item, onClose, onChanged }: EditItemDialogProps) {
+export function EditItemDialog({ noun, item, onClose, onChanged }: EditItemDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={item !== null} onClose={onClose} title="Edit video" blocked={busy}>
+    <Dialog open={item !== null} onClose={onClose} title={`Edit ${noun}`} blocked={busy}>
       {item ? <EditForm item={item} busy={busy} setBusy={setBusy} onClose={onClose} onChanged={onChanged} /> : null}
     </Dialog>
   );

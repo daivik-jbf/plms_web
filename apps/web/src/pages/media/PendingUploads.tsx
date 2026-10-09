@@ -6,11 +6,13 @@ import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Table } from '../../components/Table';
 import { formatBytes, formatDateTime } from '../../lib/format';
+import type { CategoryConfig } from '../../media/categories';
 import { MEDIA_KINDS } from '../../uploads/limits';
 import { FileMismatchError, useUploads } from '../../uploads/UploadsContext';
 import styles from './Media.module.css';
 
 interface PendingUploadsProps {
+  category: CategoryConfig;
   folderId: string;
   // Changes whenever the list may be out of date (an upload started or finished).
   reloadKey: number;
@@ -19,7 +21,7 @@ interface PendingUploadsProps {
 
 // Uploads that were interrupted (for example by closing the tab): the person can continue with the same file,
 // from the pieces the server already holds, or abandon them.
-export function PendingUploads({ folderId, reloadKey, onChanged }: PendingUploadsProps) {
+export function PendingUploads({ category, folderId, reloadKey, onChanged }: PendingUploadsProps) {
   const uploads = useUploads();
   const [list, setList] = useState<PendingUpload[]>([]);
   const [target, setTarget] = useState<PendingUpload | null>(null);
@@ -80,12 +82,12 @@ export function PendingUploads({ folderId, reloadKey, onChanged }: PendingUpload
     <section aria-label="Unfinished uploads">
       <h2>Unfinished uploads</h2>
       {error ? <Alert tone="error">{error}</Alert> : null}
-      <input ref={inputRef} type="file" accept={MEDIA_KINDS.video.accept} hidden tabIndex={-1} onChange={(event) => void onFileChosen(event)} />
+      <input ref={inputRef} type="file" accept={MEDIA_KINDS[category.kind].accept} hidden tabIndex={-1} onChange={(event) => void onFileChosen(event)} />
       {shown.length > 0 ? (
         <Table caption="Unfinished uploads">
           <thead>
             <tr>
-              <th scope="col">Video</th>
+              <th scope="col">{category.nounTitle}</th>
               <th scope="col">Size</th>
               <th scope="col">Started</th>
               <th scope="col">Actions</th>
@@ -94,7 +96,7 @@ export function PendingUploads({ folderId, reloadKey, onChanged }: PendingUpload
           <tbody>
             {shown.map((entry) => (
               <tr key={entry.fileId}>
-                <td data-label="Video">
+                <td data-label={category.nounTitle}>
                   <span className={styles.name}>{entry.title}</span>
                   <span className={styles.muted}>{entry.fileName}</span>
                 </td>
@@ -132,7 +134,7 @@ export function PendingUploads({ folderId, reloadKey, onChanged }: PendingUpload
         onCancel={() => setCancelling(null)}
         onConfirm={() => void confirmCancel()}
       >
-        {cancelling ? `What was already sent of "${cancelling.title}" will be discarded. You can upload the video again later.` : ''}
+        {cancelling ? `What was already sent of "${cancelling.title}" will be discarded. You can upload the ${category.noun} again later.` : ''}
       </ConfirmDialog>
     </section>
   );

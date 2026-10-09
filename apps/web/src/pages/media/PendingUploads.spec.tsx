@@ -2,9 +2,13 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PendingUpload } from '../../api/media';
+import { type CategoryConfig, CATEGORIES } from '../../media/categories';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
 import { FileMismatchError, type UploadJob, UploadsContext, UploadsProvider, type UploadsValue } from '../../uploads/UploadsContext';
 import { PendingUploads } from './PendingUploads';
+
+const VIDEOS = CATEGORIES.find((entry) => entry.slug === 'videos')!;
+const SONGS = CATEGORIES.find((entry) => entry.slug === 'songs')!;
 
 const pending = (overrides: Partial<PendingUpload> & { fileId: string }): PendingUpload => ({
   itemId: `item-${overrides.fileId}`,
@@ -16,13 +20,13 @@ const pending = (overrides: Partial<PendingUpload> & { fileId: string }): Pendin
   ...overrides,
 });
 
-function setup(list: PendingUpload[], jobs: UploadJob[] = [], overrides: Partial<UploadsValue> = {}) {
+function setup(list: PendingUpload[], jobs: UploadJob[] = [], overrides: Partial<UploadsValue> = {}, category: CategoryConfig = VIDEOS) {
   const fetchMock = mockSession(STAFF, (url) => (url === '/api/media/uploads/mine' ? { body: list } : { status: 404, body: {} }));
   const value: UploadsValue = { jobs, finishedCount: 0, start: vi.fn(), resume: vi.fn(async () => undefined), retry: vi.fn(), cancel: vi.fn(async () => undefined), dismiss: vi.fn(), ...overrides };
   const onChanged = vi.fn();
   const view = renderWithSession(
     <UploadsContext.Provider value={value}>
-      <PendingUploads folderId="f1" reloadKey={0} onChanged={onChanged} />
+      <PendingUploads category={category} folderId="f1" reloadKey={0} onChanged={onChanged} />
     </UploadsContext.Provider>,
   );
   return { value, onChanged, view, fetchMock };
@@ -110,7 +114,7 @@ describe('PendingUploads', () => {
     const onChanged = vi.fn();
     renderWithSession(
       <UploadsProvider>
-        <PendingUploads folderId="f1" reloadKey={0} onChanged={onChanged} />
+        <PendingUploads category={VIDEOS} folderId="f1" reloadKey={0} onChanged={onChanged} />
       </UploadsProvider>,
     );
     await userEvent.click(await screen.findByRole('button', { name: 'Cancel upload of Fire exits' }));
@@ -119,5 +123,14 @@ describe('PendingUploads', () => {
     expect(fetchMock.mock.calls.some(([url, init]) => String(url) === '/api/media/uploads/a' && init?.method === 'DELETE')).toBe(true);
     expect(screen.getByRole('button', { name: 'Resume Fire exits' })).toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it('asks for the kind of file the folder takes, in its words', async () => {
+    const { view } = setup([pending({ fileId: 'a', fileName: 'song.mp3' })], [], {}, SONGS);
+    await screen.findByRole('table', { name: 'Unfinished uploads' });
+    expect(view.container.querySelector('input[type="file"]')).toHaveAttribute('accept', 'audio/mpeg,audio/mp4,.mp3,.m4a');
+    expect(screen.getByRole('columnheader', { name: 'Song' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel upload of Fire exits' }));
+    expect(screen.getByRole('dialog', { name: 'Cancel this upload?' })).toHaveTextContent('You can upload the song again later.');
   });
 });

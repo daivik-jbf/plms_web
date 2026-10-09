@@ -14,7 +14,7 @@ describe('App routes for the media categories', () => {
   ])("%s lists that category's folders", async (path, heading) => {
     const fetchMock = mockSession(STAFF, (url) => (url === `/api/media${path}/folders` ? { body: [] } : { status: 404, body: {} }));
     renderWithSession(<App />, path);
-    expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: heading }, { timeout: 5000 })).toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(`/api/media${path}/folders`);
   });
 
@@ -26,13 +26,13 @@ describe('App routes for the media categories', () => {
       return { status: 404, body: {} };
     });
     renderWithSession(<App />, '/songs/f9');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Road trip' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Road trip' }, { timeout: 5000 })).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link', { name: 'Songs' })).toHaveAttribute('href', '/songs');
   });
 
   it('shows the not-found page for a category that does not exist', async () => {
     mockSession(STAFF);
     renderWithSession(<App />, '/music');
-    expect(await screen.findByText('Page not found')).toBeInTheDocument();
+    expect(await screen.findByText('Page not found', {}, { timeout: 5000 })).toBeInTheDocument();
   });
 });

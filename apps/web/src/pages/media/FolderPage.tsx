@@ -1,25 +1,27 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, describeError } from '../../api/client';
-import { type Folder, listFolders, listItems, reorderItems, type MediaItem } from '../../api/media';
+import { type Folder, listFolders, listItems, type MediaItem, reorderItems } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
 import type { CategoryConfig } from '../../media/categories';
+import { usePlayer } from '../../player/PlayerContext';
 import { useUploads } from '../../uploads/UploadsContext';
 import { EditItemDialog } from './EditItemDialog';
+import { ItemsTable } from './ItemsTable';
+import styles from './Media.module.css';
 import { PendingUploads } from './PendingUploads';
 import { PlayerDialog } from './PlayerDialog';
 import { UploadDialog } from './UploadDialog';
-import styles from './Media.module.css';
-import { ItemsTable } from './ItemsTable';
 
 type Notice = { tone: 'error' | 'success'; text: string };
 
 export function FolderPage({ category }: { category: CategoryConfig }) {
   const { folderId = '' } = useParams();
   const uploads = useUploads();
+  const player = usePlayer();
   const [folder, setFolder] = useState<Folder | null>(null);
   const [items, setItems] = useState<MediaItem[] | null>(null);
   const [missing, setMissing] = useState(false);
@@ -73,6 +75,16 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
     }
   }
 
+  // Videos and movies open the pop-up player. Podcasts and songs play in the docked player, which keeps playing while
+  // the person browses; it asks for the playback link itself.
+  function onPlay(item: MediaItem) {
+    if (category.kind === 'video') {
+      setPlaying(item);
+      return;
+    }
+    player.play({ itemId: item.id, title: item.title, categoryLabel: category.label, folderName: folder?.name ?? '', coverUrl: item.coverUrl });
+  }
+
   if (missing) {
     return (
       <EmptyState title="Folder not found">
@@ -88,7 +100,7 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
       </nav>
       <div className={styles.header}>
         <h1>{folder?.name ?? 'Folder'}</h1>
-        <Button onClick={() => setUploading(true)}>Upload video</Button>
+        <Button onClick={() => setUploading(true)}>{`Upload ${category.noun}`}</Button>
       </div>
 
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
@@ -109,20 +121,29 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
       ) : items === null ? (
         <Skeleton />
       ) : items.length === 0 ? (
-        <EmptyState title="No videos in this folder yet">Videos you upload here will appear in this list.</EmptyState>
+        <EmptyState title={`No ${category.nounPlural} in this folder yet`}>{`${category.label} you upload here will appear in this list.`}</EmptyState>
       ) : (
-        <ItemsTable items={items} busy={busy} progress={progress} onOpen={setPlaying} onEdit={setEditing} onMove={(item, delta) => void move(item, delta)} />
+        <ItemsTable
+          category={category}
+          items={items}
+          busy={busy}
+          progress={progress}
+          onPlay={onPlay}
+          onEdit={setEditing}
+          onMove={(item, delta) => void move(item, delta)}
+        />
       )}
 
-      <PendingUploads folderId={folderId} reloadKey={uploads.finishedCount} onChanged={() => void load()} />
+      <PendingUploads category={category} folderId={folderId} reloadKey={uploads.finishedCount} onChanged={() => void load()} />
 
       <PlayerDialog item={playing} onClose={() => setPlaying(null)} />
-      <UploadDialog open={uploading} folderId={folderId} onClose={() => setUploading(false)} onStarted={() => void load()} />
+      <UploadDialog open={uploading} category={category} folderId={folderId} onClose={() => setUploading(false)} onStarted={() => void load()} />
       <EditItemDialog
+        noun={category.noun}
         item={editing}
         onClose={() => setEditing(null)}
         onChanged={() => {
-          setNotice({ tone: 'success', text: 'Video saved.' });
+          setNotice({ tone: 'success', text: `${category.nounTitle} saved.` });
           void load();
         }}
       />

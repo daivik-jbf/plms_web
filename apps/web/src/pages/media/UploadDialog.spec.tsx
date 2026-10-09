@@ -2,27 +2,31 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client';
+import { type CategoryConfig, CATEGORIES } from '../../media/categories';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
 import { readDuration } from '../../uploads/duration';
-import { MAX_VIDEO_BYTES } from '../../uploads/limits';
+import { MAX_AUDIO_BYTES, MAX_VIDEO_BYTES } from '../../uploads/limits';
 import { UploadsContext, type UploadsValue } from '../../uploads/UploadsContext';
 import { UploadDialog } from './UploadDialog';
 
 vi.mock('../../uploads/duration', () => ({ readDuration: vi.fn(async () => 42) }));
 
+const VIDEOS = CATEGORIES.find((entry) => entry.slug === 'videos')!;
+const SONGS = CATEGORIES.find((entry) => entry.slug === 'songs')!;
+
 const mp4 = () => new File([new Uint8Array(10)], 'Fire exits.mp4', { type: 'video/mp4' });
 
-function setup(start: UploadsValue['start'] = vi.fn(async () => undefined)) {
+function setup(start: UploadsValue['start'] = vi.fn(async () => undefined), category: CategoryConfig = VIDEOS) {
   mockSession(STAFF);
   const value: UploadsValue = { jobs: [], finishedCount: 0, start, resume: vi.fn(), retry: vi.fn(), cancel: vi.fn(), dismiss: vi.fn() };
   const onClose = vi.fn();
   const onStarted = vi.fn();
   renderWithSession(
     <UploadsContext.Provider value={value}>
-      <UploadDialog open folderId="f1" onClose={onClose} onStarted={onStarted} />
+      <UploadDialog open category={category} folderId="f1" onClose={onClose} onStarted={onStarted} />
     </UploadsContext.Provider>,
   );
-  const dialog = screen.getByRole('dialog', { name: 'Upload video' });
+  const dialog = screen.getByRole('dialog', { name: `Upload ${category.noun}` });
   return { dialog, start, onClose, onStarted };
 }
 
@@ -145,5 +149,64 @@ describe('UploadDialog', () => {
 
     accept();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+});
+
+describe('UploadDialog for songs', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it('offers MP3 and M4A up to 500 MB under the name of the category', () => {
+    const { dialog } = setup(undefined, SONGS);
+    expect(within(dialog).getByLabelText('Song file (MP3 or M4A, up to 500 MB)')).toHaveAttribute('accept', 'audio/mpeg,audio/mp4,.mp3,.m4a');
+  });
+
+  it('starts an MP3 with its type, reading its length with an audio element', async () => {
+    const { dialog, start } = setup(undefined, SONGS);
+    vi.mocked(readDuration).mockClear();
+    const file = new File([new Uint8Array(10)], 'Morning song.mp3', { type: 'audio/mpeg' });
+    await userEvent.upload(within(dialog).getByLabelText(/Song file/), file);
+    expect(within(dialog).getByLabelText('Title')).toHaveValue('Morning song');
+    expect(readDuration).toHaveBeenCalledWith(file, 'audio');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    await waitFor(() =>
+      expect(start).toHaveBeenCalledWith(expect.objectContaining({ file, folderId: 'f1', contentType: 'audio/mpeg', title: 'Morning song', durationSeconds: 42 })),
+    );
+  });
+
+  it('declares an M4A that the system calls audio/x-m4a as audio/mp4', async () => {
+    const { dialog, start } = setup(undefined, SONGS);
+    const file = new File([new Uint8Array(10)], 'Talk.m4a', { type: 'audio/x-m4a' });
+    await userEvent.upload(within(dialog).getByLabelText(/Song file/), file);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(expect.objectContaining({ file, contentType: 'audio/mp4' })));
+  });
+
+  it('refuses raw AAC and video files with the audio message and sends nothing', async () => {
+    const { dialog, start } = setup(undefined, SONGS);
+    const input = within(dialog).getByLabelText(/Song file/);
+    await userEvent.upload(input, new File(['x'], 'raw.aac', { type: 'audio/aac' }), { applyAccept: false });
+    expect(await within(dialog).findByText('Only MP3 or M4A audio files can be uploaded here.')).toBeInTheDocument();
+    await userEvent.upload(input, new File(['x'], 'clip.mp4', { type: 'video/mp4' }), { applyAccept: false });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    expect(within(dialog).getByText('Only MP3 or M4A audio files can be uploaded here.')).toBeInTheDocument();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('refuses a song over 500 MB', async () => {
+    const { dialog, start } = setup(undefined, SONGS);
+    const big = new File(['x'], 'long.mp3', { type: 'audio/mpeg' });
+    Object.defineProperty(big, 'size', { value: MAX_AUDIO_BYTES + 1 });
+    await userEvent.upload(within(dialog).getByLabelText(/Song file/), big);
+    expect(await within(dialog).findByText('Audio files can be at most 500 MB. Choose a smaller file.')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('asks for a song file before sending anything', async () => {
+    const { dialog, start } = setup(undefined, SONGS);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    expect(await within(dialog).findByText('Choose a song file.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Song file/)).toHaveFocus();
+    expect(start).not.toHaveBeenCalled();
   });
 });

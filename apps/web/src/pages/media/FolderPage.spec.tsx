@@ -3,14 +3,18 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Folder, MediaItem } from '../../api/media';
+import type { CategorySlug, Folder, MediaItem } from '../../api/media';
+import { type CategoryConfig, CATEGORIES } from '../../media/categories';
+import { DockedPlayer } from '../../player/DockedPlayer';
+import { PlayerContext, PlayerProvider, type PlayerValue } from '../../player/PlayerContext';
 import type { MockResponse } from '../../test/fetch-mock';
-import { CATEGORIES } from '../../media/categories';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
 import { type UploadJob, UploadsContext, type UploadsValue } from '../../uploads/UploadsContext';
 import { FolderPage } from './FolderPage';
 
 const VIDEOS = CATEGORIES.find((entry) => entry.slug === 'videos')!;
+const MOVIES = CATEGORIES.find((entry) => entry.slug === 'movies')!;
+const SONGS = CATEGORIES.find((entry) => entry.slug === 'songs')!;
 
 const folder: Folder = { id: 'f1', name: 'Safety Training', position: 0, itemCount: 3, category: 'video' };
 const item = (overrides: Partial<MediaItem> & { id: string; title: string }): MediaItem => ({
@@ -34,7 +38,7 @@ const fixture: MediaItem[] = [
 
 type Override = MockResponse | ((body: Record<string, unknown>) => MockResponse);
 
-function startServer(overrides: Record<string, Override> = {}, items: MediaItem[] = fixture, folders: Folder[] = [folder]) {
+function startServer(overrides: Record<string, Override> = {}, items: MediaItem[] = fixture, folders: Folder[] = [folder], slug: CategorySlug = 'videos') {
   const state = { items: structuredClone(items) };
   const calls: { key: string; body: Record<string, unknown> }[] = [];
   mockSession(STAFF, (url, init) => {
@@ -43,7 +47,7 @@ function startServer(overrides: Record<string, Override> = {}, items: MediaItem[
     calls.push({ key, body });
     const override = overrides[key];
     if (override) return typeof override === 'function' ? override(body) : override;
-    if (key === 'GET /api/media/videos/folders') return { body: folders };
+    if (key === `GET /api/media/${slug}/folders`) return { body: folders };
     if (key === 'GET /api/media/folders/f1/items') return { body: state.items };
     if (key === 'GET /api/media/uploads/mine') return { body: [] };
     const edit = /^PATCH \/api\/media\/items\/([^/]+)$/.exec(key);
@@ -77,28 +81,32 @@ const fakeUploads = (overrides: Partial<UploadsValue> = {}): UploadsValue => ({
   ...overrides,
 });
 
+const fakePlayer = (): PlayerValue => ({ session: null, play: vi.fn(), close: vi.fn() });
+
 let setUploads: (value: UploadsValue) => void = () => undefined;
 
-function UploadsHarness({ initial }: { initial: UploadsValue }) {
+function UploadsHarness({ initial, category, player }: { initial: UploadsValue; category: CategoryConfig; player: PlayerValue }) {
   const [value, setValue] = useState(initial);
   setUploads = setValue;
   return (
     <UploadsContext.Provider value={value}>
-      <Routes>
-        <Route path="/videos/:folderId" element={<FolderPage category={VIDEOS} />} />
-      </Routes>
+      <PlayerContext.Provider value={player}>
+        <Routes>
+          <Route path={`/${category.slug}/:folderId`} element={<FolderPage category={category} />} />
+        </Routes>
+      </PlayerContext.Provider>
     </UploadsContext.Provider>
   );
 }
 
-function renderPage(route = '/videos/f1', uploads: UploadsValue = fakeUploads()) {
-  return renderWithSession(<UploadsHarness initial={uploads} />, route);
+function renderPage(route = '/videos/f1', uploads: UploadsValue = fakeUploads(), category: CategoryConfig = VIDEOS, player: PlayerValue = fakePlayer()) {
+  return renderWithSession(<UploadsHarness initial={uploads} category={category} player={player} />, route);
 }
 
 function renderPageInStrictMode() {
   return renderWithSession(
     <StrictMode>
-      <UploadsHarness initial={fakeUploads()} />
+      <UploadsHarness initial={fakeUploads()} category={VIDEOS} player={fakePlayer()} />
     </StrictMode>,
     '/videos/f1',
   );
@@ -334,5 +342,112 @@ describe('FolderPage', () => {
     const before = calls.filter((call) => call.key === 'GET /api/media/folders/f1/items').length;
     act(() => setUploads(fakeUploads({ finishedCount: 1 })));
     await waitFor(() => expect(calls.filter((call) => call.key === 'GET /api/media/folders/f1/items').length).toBe(before + 1));
+  });
+});
+
+describe('FolderPage for the other categories', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const songFolder: Folder = { id: 'f1', name: 'Road trip', position: 0, itemCount: 2, category: 'song' };
+  const songs: MediaItem[] = [
+    item({ id: 's1', title: 'Morning song', category: 'song', durationSeconds: 185, sizeBytes: 6 * 1024 ** 2 }),
+    item({ id: 's2', title: '<img src=x onerror=alert(1)>', category: 'song', position: 1 }),
+  ];
+  const songLink = { body: { url: 'https://cdn.example/s1?sig=1', expiresAt: '2026-10-09T11:00:00Z', contentType: 'audio/mpeg' } };
+
+  it('uses the words of the category and shows a ♪ for songs without a cover', async () => {
+    startServer({}, songs, [songFolder], 'songs');
+    renderPage('/songs/f1', fakeUploads(), SONGS);
+    expect(await screen.findByRole('heading', { name: 'Road trip' })).toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link', { name: 'Songs' })).toHaveAttribute('href', '/songs');
+    expect(screen.getByRole('button', { name: 'Upload song' })).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: 'Songs in this folder' });
+    expect(within(table).getByRole('columnheader', { name: 'Song' })).toBeInTheDocument();
+    expect(within(table).getAllByText('♪')).toHaveLength(2);
+    expect(within(table).getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
+    expect(document.querySelector('img')).toBeNull();
+  });
+
+  it('says so in its own words when a songs folder is empty or missing', async () => {
+    startServer({}, [], [songFolder], 'songs');
+    const first = renderPage('/songs/f1', fakeUploads(), SONGS);
+    expect(await screen.findByText('No songs in this folder yet')).toBeInTheDocument();
+    expect(screen.getByText('Songs you upload here will appear in this list.')).toBeInTheDocument();
+    first.unmount();
+
+    startServer({ 'GET /api/media/folders/f1/items': { status: 404, body: { message: 'Folder not found.' } } }, [], [songFolder], 'songs');
+    renderPage('/songs/f1', fakeUploads(), SONGS);
+    expect(await screen.findByText('Folder not found')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to Songs' })).toHaveAttribute('href', '/songs');
+  });
+
+  it('starts a song in the docked player from its Play button, with no pop-up and no request of its own', async () => {
+    const player = fakePlayer();
+    const calls = startServer({}, songs, [songFolder], 'songs');
+    renderPage('/songs/f1', fakeUploads(), SONGS, player);
+    await userEvent.click(await screen.findByRole('button', { name: 'Play Morning song' }));
+    expect(player.play).toHaveBeenCalledWith({ itemId: 's1', title: 'Morning song', categoryLabel: 'Songs', folderName: 'Road trip', coverUrl: null });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Morning song' })).toBeNull();
+    await userEvent.click(screen.getByText('3:05'));
+    expect(player.play).toHaveBeenCalledTimes(1);
+    expect(calls.some((call) => call.key.endsWith('/play'))).toBe(false);
+  });
+
+  it('plays a song in the real docked player with one link and the folder named', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    const calls = startServer({ 'POST /api/media/items/s1/play': songLink }, songs, [songFolder], 'songs');
+    renderWithSession(
+      <UploadsContext.Provider value={fakeUploads()}>
+        <PlayerProvider>
+          <Routes>
+            <Route path="/songs/:folderId" element={<FolderPage category={SONGS} />} />
+          </Routes>
+          <DockedPlayer />
+        </PlayerProvider>
+      </UploadsContext.Provider>,
+      '/songs/f1',
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Play Morning song' }));
+    const bar = await screen.findByRole('region', { name: 'Player' });
+    expect(within(bar).getByText('Songs › Road trip')).toBeInTheDocument();
+    await waitFor(() => expect(bar.querySelector('audio')).toHaveAttribute('src', 'https://cdn.example/s1?sig=1'));
+    expect(calls.filter((call) => call.key === 'POST /api/media/items/s1/play')).toHaveLength(1);
+  });
+
+  it('opens a movie in the pop-up player, like a video, and never in the dock', async () => {
+    const player = fakePlayer();
+    const movieFolder: Folder = { id: 'f1', name: 'Classics', position: 0, itemCount: 1, category: 'movie' };
+    startServer(
+      { 'POST /api/media/items/m1/play': { body: { url: 'https://cdn.example/m1?sig=1', expiresAt: '2026-10-09T11:00:00Z', contentType: 'video/mp4' } } },
+      [item({ id: 'm1', title: 'The long walk', category: 'movie' })],
+      [movieFolder],
+      'movies',
+    );
+    renderPage('/movies/f1', fakeUploads(), MOVIES, player);
+    await userEvent.click(await screen.findByRole('button', { name: 'The long walk' }));
+    const dialog = await screen.findByRole('dialog', { name: 'The long walk' });
+    await waitFor(() => expect(dialog.querySelector('video')).toHaveAttribute('src', 'https://cdn.example/m1?sig=1'));
+    expect(screen.queryByRole('button', { name: 'Play The long walk' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Upload movie' })).toBeInTheDocument();
+    expect(player.play).not.toHaveBeenCalled();
+  });
+
+  it('edits a song in a dialog named for it', async () => {
+    startServer({}, songs, [songFolder], 'songs');
+    renderPage('/songs/f1', fakeUploads(), SONGS);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit Morning song' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit song' });
+    await userEvent.type(within(dialog).getByLabelText('Title'), ' (live)');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Song saved.')).toBeInTheDocument();
+  });
+
+  it('opens the upload dialog for songs with the audio rules', async () => {
+    startServer({}, songs, [songFolder], 'songs');
+    renderPage('/songs/f1', fakeUploads(), SONGS);
+    await userEvent.click(await screen.findByRole('button', { name: 'Upload song' }));
+    const dialog = screen.getByRole('dialog', { name: 'Upload song' });
+    expect(within(dialog).getByLabelText('Song file (MP3 or M4A, up to 500 MB)')).toHaveAttribute('accept', 'audio/mpeg,audio/mp4,.mp3,.m4a');
   });
 });
