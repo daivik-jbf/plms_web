@@ -5,7 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '../api/auth';
 import { ProtectedRoute } from '../auth/ProtectedRoute';
 import { ADMIN, mockSession, renderWithSession, STAFF } from '../test/session';
+import { useUploads } from '../uploads/UploadsContext';
 import { AppShell } from './AppShell';
+
+function UploadsProbe() {
+  return <p>{`Uploads in progress: ${useUploads().jobs.length}`}</p>;
+}
 
 function renderShell(user: User) {
   const fetchMock = mockSession(user, (url) => (url === '/api/auth/logout' ? { status: 204 } : { status: 404, body: {} }));
@@ -75,5 +80,25 @@ describe('AppShell', () => {
     expect(within(nav).queryByRole('link', { name: 'Audit log' })).not.toBeInTheDocument();
     expect(within(nav).queryByText('Admin')).not.toBeInTheDocument();
     expect(within(nav).getByRole('link', { name: 'My account' })).toHaveAttribute('href', '/account');
+  });
+
+  it('has a place for upload progress that stays empty until an upload starts', async () => {
+    renderShell(ADMIN);
+    await screen.findByText('Anita Rao · Admin');
+    expect(screen.queryByRole('region', { name: 'Uploads' })).toBeNull();
+  });
+
+  it('lets every page start and follow uploads', async () => {
+    mockSession(ADMIN);
+    renderWithSession(
+      <Routes>
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AppShell />}>
+            <Route path="/" element={<UploadsProbe />} />
+          </Route>
+        </Route>
+      </Routes>,
+    );
+    expect(await screen.findByText('Uploads in progress: 0')).toBeInTheDocument();
   });
 });
