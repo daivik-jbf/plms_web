@@ -3,6 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { Database } from '../../src/db/db.module';
 import { files, type MediaFolder, mediaFolders, mediaItems, type Role, type User } from '../../src/db/schema';
+import { PART_SIZE } from '../../src/storage/storage.constants';
 import type { InMemoryStorage } from '../support/in-memory-storage';
 import { bearer, loginMobile, type Session } from './auth';
 import { createUser } from './users';
@@ -99,4 +100,70 @@ export async function seedItem(db: Database, options: SeedItemOptions) {
     })
     .returning();
   return { itemId: item.id, fileId: video.id, storageKey, coverFileId };
+}
+
+export interface StartedUpload {
+  itemId: string;
+  fileId: string;
+  partSize: number;
+  partCount: number;
+}
+
+export async function startUploadViaApi(
+  app: INestApplication,
+  session: Session,
+  folderId: string,
+  overrides: Record<string, unknown> = {},
+): Promise<StartedUpload> {
+  const res = await request(app.getHttpServer())
+    .post('/api/media/uploads')
+    .set(...bearer(session))
+    .send({ folderId, title: uniqueName('Video'), fileName: 'clip.mp4', contentType: 'video/mp4', sizeBytes: 100, ...overrides })
+    .expect(201);
+  return res.body;
+}
+
+// Asks for piece links and "uploads" the pieces to the in-memory storage; returns the receipts.
+export async function putPieces(
+  app: INestApplication,
+  storage: InMemoryStorage,
+  session: Session,
+  fileId: string,
+  body: Uint8Array,
+  only?: number[],
+): Promise<{ partNumber: number; etag: string }[]> {
+  const count = Math.max(1, Math.ceil(body.length / PART_SIZE));
+  const numbers = only ?? Array.from({ length: count }, (_, index) => index + 1);
+  const receipts: { partNumber: number; etag: string }[] = [];
+  for (let start = 0; start < numbers.length; start += 16) {
+    const batch = numbers.slice(start, start + 16);
+    const res = await request(app.getHttpServer())
+      .post(`/api/media/uploads/${fileId}/part-urls`)
+      .set(...bearer(session))
+      .send({ partNumbers: batch })
+      .expect(200);
+    for (const partNumber of batch) {
+      const slice = body.subarray((partNumber - 1) * PART_SIZE, partNumber * PART_SIZE);
+      receipts.push({ partNumber, etag: storage.putPart(res.body.urls[String(partNumber)], slice).etag });
+    }
+  }
+  return receipts;
+}
+
+export const completeViaApi = (app: INestApplication, session: Session, fileId: string, parts: { partNumber: number; etag: string }[]) =>
+  request(app.getHttpServer()).post(`/api/media/uploads/${fileId}/complete`).set(...bearer(session)).send({ parts });
+
+// The happy path end to end. The declared size defaults to the real size.
+export async function uploadVideo(
+  app: INestApplication,
+  storage: InMemoryStorage,
+  session: Session,
+  folderId: string,
+  body: Uint8Array = mp4Bytes(100),
+  overrides: Record<string, unknown> = {},
+) {
+  const started = await startUploadViaApi(app, session, folderId, { sizeBytes: body.length, ...overrides });
+  const parts = await putPieces(app, storage, session, started.fileId, body);
+  const res = await completeViaApi(app, session, started.fileId, parts);
+  return { ...started, parts, res };
 }
