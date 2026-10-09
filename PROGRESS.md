@@ -38,7 +38,7 @@ Last updated: 2026-10-09
 - Media API under `/api/media` (15 routes, any signed-in person): video folders (create, rename, list, reorder), videos (list, edit, reorder), resumable uploads of MP4 files up to 2 GiB in 16 MiB pieces (start, piece links, resume, complete with server-side verification of size, type and first bytes, cancel, own unfinished uploads), cover images (JPEG, PNG or WebP up to 10 MiB) and one-hour playback links (every issued link is audited). A video is invisible to everyone but its uploader until it is ready.
 - Web: a Videos page (folders), a folder page (videos table with covers, player dialog, edit dialog, move up and down, unfinished uploads with Resume), an upload dialog, and an app-wide upload manager with a progress panel (three pieces at a time, retries with waits, offline waiting, warning before closing the tab).
 - Documentation: `docs/storage.md` (the Cloudflare setup guide, written for a first-time user), `docs/api/media.md` (the contract) and the 12 new actions in `docs/api/audit.md`.
-- Tests at the end of the build: 448 API tests (44 suites) and 309 web tests (37 files), all passing. Lint and both builds are clean. `npm audit --audit-level=high` exits 0 (24 moderate advisories, all in development tooling: `esbuild` through `drizzle-kit` and `sprintf-js` through `jest`/`ts-jest`).
+- Tests at the end of the build: 453 API tests (44 suites) and 325 web tests (38 files), all passing. Lint and both builds are clean. `npm audit --audit-level=high` exits 0 (24 moderate advisories, all in development tooling: `esbuild` through `drizzle-kit` and `sprintf-js` through `jest`/`ts-jest`).
 
 ## In progress
 
