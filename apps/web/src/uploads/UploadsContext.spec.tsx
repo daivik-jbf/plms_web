@@ -47,7 +47,7 @@ function Probe() {
   );
 }
 
-const input = { file, folderId: 'f1', title: 'Fire exits', description: '', durationSeconds: 12, cover: null };
+const input = { file, folderId: 'f1', contentType: 'video/mp4', title: 'Fire exits', description: '', durationSeconds: 12, cover: null };
 
 function setup() {
   return renderWithSession(
@@ -91,6 +91,13 @@ describe('UploadsProvider', () => {
         { partNumber: 3, etag: '"etag-3"' },
       ],
     });
+  });
+
+  it('declares the type it was given, for example an M4A for a song folder', async () => {
+    const calls = startServer();
+    setup();
+    await act(() => value.start({ ...input, file: new File([new Uint8Array(10)], 'talk.m4a', { type: 'audio/x-m4a' }), contentType: 'audio/mp4' }));
+    expect(calls.find((call) => call.key === 'POST /api/media/uploads')?.body).toMatchObject({ fileName: 'talk.m4a', contentType: 'audio/mp4' });
   });
 
   it('refuses to start when the server refuses, and records no job', async () => {

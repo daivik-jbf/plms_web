@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Table } from '../../components/Table';
 import { formatBytes, formatDateTime } from '../../lib/format';
+import { MEDIA_KINDS } from '../../uploads/limits';
 import { FileMismatchError, useUploads } from '../../uploads/UploadsContext';
 import styles from './Videos.module.css';
 
@@ -79,7 +80,7 @@ export function PendingUploads({ folderId, reloadKey, onChanged }: PendingUpload
     <section aria-label="Unfinished uploads">
       <h2>Unfinished uploads</h2>
       {error ? <Alert tone="error">{error}</Alert> : null}
-      <input ref={inputRef} type="file" accept="video/mp4,.mp4" hidden tabIndex={-1} onChange={(event) => void onFileChosen(event)} />
+      <input ref={inputRef} type="file" accept={MEDIA_KINDS.video.accept} hidden tabIndex={-1} onChange={(event) => void onFileChosen(event)} />
       {shown.length > 0 ? (
         <Table caption="Unfinished uploads">
           <thead>

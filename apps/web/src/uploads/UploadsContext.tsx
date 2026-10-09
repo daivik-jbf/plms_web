@@ -33,6 +33,7 @@ export interface UploadJob {
 export interface StartInput {
   file: File;
   folderId: string;
+  contentType: string;
   title: string;
   description: string;
   durationSeconds: number | null;
@@ -41,7 +42,7 @@ export interface StartInput {
 
 export interface UploadsValue {
   jobs: UploadJob[];
-  // Goes up by one each time a video finishes, so pages showing videos know to reload.
+  // Goes up by one each time an upload finishes, so pages showing items know to reload.
   finishedCount: number;
   start: (input: StartInput) => Promise<void>;
   resume: (pending: PendingUpload, file: File) => Promise<void>;
@@ -179,7 +180,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
         title: input.title,
         description: input.description,
         fileName: input.file.name,
-        contentType: 'video/mp4',
+        contentType: input.contentType,
         sizeBytes: input.file.size,
         durationSeconds: input.durationSeconds,
       });

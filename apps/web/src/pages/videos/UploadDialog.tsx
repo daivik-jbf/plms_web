@@ -6,7 +6,7 @@ import { Dialog } from '../../components/Dialog';
 import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import { readDuration } from '../../uploads/duration';
-import { checkCoverFile, checkVideoFile } from '../../uploads/limits';
+import { checkCoverFile, checkMediaFile } from '../../uploads/limits';
 import { useUploads } from '../../uploads/UploadsContext';
 import styles from './Videos.module.css';
 
@@ -61,32 +61,33 @@ function UploadForm({
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const chosen = event.target.files?.[0] ?? null;
-    const problem = chosen ? checkVideoFile(chosen) : null;
+    const check = chosen ? checkMediaFile('video', chosen) : null;
     setFile(chosen);
-    setErrors((previous) => ({ ...previous, file: problem ?? undefined }));
+    setErrors((previous) => ({ ...previous, file: check && !check.ok ? check.problem : undefined }));
     if (chosen && !titleTouched.current) setTitle(chosen.name.replace(/\.[^.]+$/, ''));
-    // A file that will be refused is never opened in a video element.
-    duration.current = chosen && !problem ? readDuration(chosen) : Promise.resolve(null);
+    // A file that will be refused is never opened in a media element.
+    duration.current = chosen && check?.ok ? readDuration(chosen, 'video') : Promise.resolve(null);
   }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
     setFailure(null);
+    const check = file ? checkMediaFile('video', file) : null;
     const next: Errors = {
-      file: file ? (checkVideoFile(file) ?? undefined) : 'Choose a video file.',
+      file: check === null ? 'Choose a video file.' : check.ok ? undefined : check.problem,
       title: title.trim() ? undefined : 'Enter a title.',
       cover: cover ? (checkCoverFile(cover) ?? undefined) : undefined,
     };
     setErrors(next);
     const first = (['file', 'title', 'cover'] as const).find((field) => next[field]);
-    if (first || !file) {
+    if (first || !file || !check || !check.ok) {
       setFocusRequest({ field: first ?? 'file' });
       return;
     }
     setBusy(true);
     try {
-      await uploads.start({ file, folderId, title: title.trim(), description, durationSeconds: await duration.current, cover });
+      await uploads.start({ file, folderId, contentType: check.contentType, title: title.trim(), description, durationSeconds: await duration.current, cover });
       onStarted();
       onClose();
     } catch (caught) {

@@ -56,7 +56,7 @@ describe('UploadDialog', () => {
     await userEvent.type(within(dialog).getByLabelText('Description'), 'Where to go.');
     await userEvent.upload(within(dialog).getByLabelText('Cover image'), cover);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
-    expect(start).toHaveBeenCalledWith({ file, folderId: 'f1', title: 'Fire exits', description: 'Where to go.', durationSeconds: 42, cover });
+    expect(start).toHaveBeenCalledWith({ file, folderId: 'f1', contentType: 'video/mp4', title: 'Fire exits', description: 'Where to go.', durationSeconds: 42, cover });
     await vi.waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
   });
@@ -117,6 +117,14 @@ describe('UploadDialog', () => {
     expect(readDuration).not.toHaveBeenCalled();
   });
 
+
+  it('reads the length of a video with a video element', async () => {
+    const { dialog } = setup();
+    vi.mocked(readDuration).mockClear();
+    const file = mp4();
+    await userEvent.upload(within(dialog).getByLabelText(/Video file/), file);
+    expect(readDuration).toHaveBeenCalledWith(file, 'video');
+  });
   it('cannot be dismissed or submitted twice while the server is accepting the upload', async () => {
     let accept: () => void = () => undefined;
     const start = vi.fn(() => new Promise<void>((resolve) => (accept = resolve)));
