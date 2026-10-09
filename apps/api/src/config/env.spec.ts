@@ -34,4 +34,15 @@ describe('parseEnv', () => {
     expect(parseEnv({ ...base, AUDIT_EXPORT_MAX_ROWS: '5' }).AUDIT_EXPORT_MAX_ROWS).toBe(5);
     expect(() => parseEnv({ ...base, AUDIT_EXPORT_MAX_ROWS: '0' })).toThrow(/AUDIT_EXPORT_MAX_ROWS/);
   });
+
+  it('defaults the storage settings for development', () => {
+    const env = parseEnv(base);
+    expect(env.STORAGE_DRIVER).toBe('local');
+    expect(env.STORAGE_LOCAL_DIR).toBe('./.storage');
+    expect(env.STORAGE_SIGNING_SECRET).toBeUndefined();
+  });
+
+  it('rejects a short signing secret', () => {
+    expect(() => parseEnv({ ...base, STORAGE_SIGNING_SECRET: 'short' })).toThrow(/STORAGE_SIGNING_SECRET/);
+  });
 });

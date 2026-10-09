@@ -35,13 +35,16 @@ export class AppLogger implements LoggerService {
   }
 }
 
+// Links for the development storage routes carry a signed token in the path; it must never reach the logs.
+const loggablePath = (path: string): string => (path.startsWith('/api/dev-storage/') ? '/api/dev-storage/[link]' : path);
+
 export function requestLogger(logger: AppLogger) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const started = Date.now();
     const { requestId } = currentRequestMeta();
     res.on('finish', () => {
       logger.event(
-        { requestId, method: req.method, path: req.path, status: res.statusCode, ms: Date.now() - started },
+        { requestId, method: req.method, path: loggablePath(req.path), status: res.statusCode, ms: Date.now() - started },
         'request',
       );
     });

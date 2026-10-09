@@ -11,6 +11,7 @@ import { DbModule } from './db/db.module';
 import { HealthModule } from './health/health.module';
 import { InvitesModule } from './invites/invites.module';
 import { MailModule } from './mail/mail.module';
+import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module';
     DbModule,
     AuditModule,
     MailModule,
+    StorageModule,
     AuthModule,
     HealthModule,
     InvitesModule,

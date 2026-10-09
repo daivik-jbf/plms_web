@@ -17,6 +17,9 @@ const schema = z
     TRUST_PROXY: booleanString('false'),
     THROTTLE_ENABLED: booleanString('true'),
     AUDIT_EXPORT_MAX_ROWS: z.coerce.number().int().positive().default(50_000),
+    STORAGE_DRIVER: z.enum(['local']).default('local'),
+    STORAGE_LOCAL_DIR: z.string().min(1).default('./.storage'),
+    STORAGE_SIGNING_SECRET: z.string().min(32).optional(),
   })
   .superRefine((env, ctx) => {
     if (env.MAIL_TRANSPORT === 'smtp' && !env.SMTP_URL) {
