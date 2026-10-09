@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "ts-node src/cli/migrate.ts",
     "db:migrate:prod": "node dist/cli/migrate.js",
-    "admin:create": "ts-node src/cli/create-admin.ts"
+    "admin:create": "ts-node src/cli/create-admin.ts",
+    "storage:check": "ts-node src/cli/storage-check.ts"
   },
   "jest": {
     "preset": "ts-jest",
@@ -54,6 +55,8 @@
     "ts-node": "^10.9.2"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1148.0",
+    "@aws-sdk/s3-request-presigner": "^3.1148.0",
     "@nestjs/common": "^11.2.7",
     "@nestjs/core": "^11.2.7",
     "@nestjs/platform-express": "^11.2.7",

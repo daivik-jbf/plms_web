@@ -45,4 +45,16 @@ describe('parseEnv', () => {
   it('rejects a short signing secret', () => {
     expect(() => parseEnv({ ...base, STORAGE_SIGNING_SECRET: 'short' })).toThrow(/STORAGE_SIGNING_SECRET/);
   });
+
+  it('accepts the r2 driver only with all four Cloudflare settings', () => {
+    const r2 = { ...base, STORAGE_DRIVER: 'r2' };
+    expect(() => parseEnv(r2)).toThrow(/R2_ACCOUNT_ID/);
+    const complete = { ...r2, R2_ACCOUNT_ID: 'a', R2_ACCESS_KEY_ID: 'b', R2_SECRET_ACCESS_KEY: 'c', R2_BUCKET: 'd' };
+    expect(parseEnv(complete).STORAGE_DRIVER).toBe('r2');
+    expect(() => parseEnv({ ...complete, R2_BUCKET: '' })).toThrow(/R2_BUCKET/);
+  });
+
+  it('refuses the local storage driver in production', () => {
+    expect(() => parseEnv({ ...base, NODE_ENV: 'production', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtp://x' })).toThrow(/STORAGE_DRIVER/);
+  });
 });
