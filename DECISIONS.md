@@ -53,7 +53,6 @@ Dated entries, newest last. Each has the reason. The spec (`docs/superpowers/spe
 - **2026-10-08: The sign-out notice is carried in auth state** (`signOut(notice?)` stores it on the anonymous state, and the sign-in screen reads it). Reason: after a password change the person lands on the sign-in screen and should be told why; auth state survives the redirect without putting a message in the URL or in storage.
 - **2026-10-08: Admin-only pages are hidden in the UI and enforced by the server.** Reason: the sidebar hides Staff and Audit log for Staff and an Admin route sends them to the Dashboard, which is a convenience; the real rule is the server's 401 and 403 on every audit, user and invite route.
 
-
 ## Engineering decisions (milestone 3)
 
 - **2026-10-09: Cloudflare R2 for file storage.** Reason: R2 does not charge for data leaving the bucket, which suits many phones downloading videos; it is S3-compatible, so the code (the AWS SDK) stays portable to another S3 service if needed.

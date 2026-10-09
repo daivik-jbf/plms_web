@@ -265,7 +265,9 @@ A cover is optional and can be added when uploading or later, and replaced at an
 2. `PUT` the image bytes to `url` in a single request with exactly the headers returned in `headers`. The link is signed over the content type, so the declared `Content-Type` must be sent unchanged.
 3. `POST /api/media/items/:id/cover/:fileId/complete` (no body). The server checks the stored size, the stored type and the first bytes (JPEG `FF D8 FF`, PNG `89 50 4E 47 ...`, WebP `RIFF....WEBP`), then attaches the cover. A replaced cover is deleted from storage. Returns the `ItemView` with a fresh `coverUrl`. Repeating the call for a cover that is already attached returns the item again.
 
-The completion route carries the item id as well as the file id so that no extra record is needed to know which item the cover belongs to.
+The completion route carries the item id as well as the file id so that no extra record is needed to know which item the cover belongs to. The server does not check that a pending cover file was issued for the item in the path: a cover can be completed on any item the caller can see, and only the uploader of the cover or an Admin can complete it.
+
+Known limitation (accepted risk): the cover upload link stays usable for its hour after the cover is verified, so its holder can overwrite the stored cover until it expires. See "Security notes" in `docs/storage.md`.
 
 | Status | Message | Meaning |
 | --- | --- | --- |

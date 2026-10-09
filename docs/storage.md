@@ -2,6 +2,8 @@
 
 This guide is for the person who sets up the storage for the JBF Learning Management System. You do not need to have used Cloudflare before. Follow the steps in order; each one says what to click and what to copy. The developer view of the same feature is in `docs/api/media.md`.
 
+**Please read this first.** This guide was written before an R2 bucket existed for this project, so it has not been tested end to end. The Cloudflare dashboard wording used below (R2 Object Storage, Manage API tokens, CORS policy, Object lifecycle rules) was written without access to a live account and may differ slightly from what you see. Cloudflare also changes its screens from time to time. The real test of your setup is `npm run storage:check` (section 4); trust it over this guide, and please correct the guide if something differs.
+
 ## 1. What this is for
 
 Videos and cover images are not kept on the server. They go to **Cloudflare R2**, a private online storage service (think of a very large, locked filing cabinet that only this system has the key to). A folder in R2 is called a **bucket**.
@@ -17,6 +19,8 @@ Videos and cover images are not kept on the server. They go to **Cloudflare R2**
 - Someone with access to the server's `apps/api/.env` file (the settings file for the API) to paste the values into at the end.
 
 ## 3. Step by step
+
+The Cloudflare dashboard wording below (R2 Object Storage, Manage API tokens, CORS policy, Object lifecycle rules) was written without access to a live account and may differ slightly from what you see. `npm run storage:check` (section 4) is the real test of the setup. This guide was written before an R2 bucket existed for this project, so it has not been tested end to end.
 
 1. **Create the bucket.** In the Cloudflare dashboard open **R2 Object Storage** and choose **Create bucket**. Give it a name, for example `jbf-media`. Leave **public access off**. Do not enable the `r2.dev` public URL.
 2. **Note the Account ID.** It is shown on the R2 overview page. You will need it in step 6.
@@ -70,13 +74,13 @@ Common crosses and what to do:
 | What you see | Usual cause and fix |
 | --- | --- |
 | `The service answered 403` | The Access Key ID or Secret Access Key is wrong or mistyped, the key was not given access to this bucket, or the server's clock is far off (links are signed with the time). Re-check step 3 and step 6, and the server's clock |
-| `NoSuchBucket` | `R2_BUCKET` or `R2_ACCOUNT_ID` is wrong. The bucket name must match exactly; the Account ID is on the R2 overview page |
+| `The service answered 404` (on the first line, "Upload a small file with a temporary link") | The bucket was not found: `R2_BUCKET` is misspelled or the bucket does not exist in this account. Check the name exactly as shown in the R2 dashboard, and that `R2_ACCOUNT_ID` belongs to the account that owns the bucket |
+| `fetch failed` (or another network error message) on the first line | The script could not reach Cloudflare at all. Usual causes: `R2_ACCOUNT_ID` is wrong (the address `https://<account>.r2.cloudflarestorage.com` then does not exist), or the computer has no internet access or a firewall is blocking it |
 | `The test upload was refused (HTTP n); check the access key and bucket name before judging the browser permissions.` | The test upload itself failed, so the browser rules could not be judged. Fix the key or bucket first (as above), then run the check again |
 | `The bucket's browser permissions (CORS) do not allow the web address ... to upload.` | The `AllowedOrigins` in the CORS policy does not list the address in `WEB_ORIGIN` exactly (watch for `http` against `https`, `www.`, a trailing slash, or a different port) |
 | `The bucket does not allow the PUT method from the browser.` | `AllowedMethods` is missing `PUT` |
 | `The bucket does not allow the Content-Type header from the browser, so cover uploads would be blocked.` | `AllowedHeaders` is missing `Content-Type` |
 | `The bucket does not expose the ETag header, so the browser cannot read each piece's receipt.` | `ExposeHeaders` is missing `ETag`; uploads would fail with "the storage did not return a receipt" |
-| Any line with a message about the SDK or the network | The server cannot reach `https://<account>.r2.cloudflarestorage.com`; check the internet connection and any firewall |
 
 CORS changes can take a minute to apply; run the check again after a short wait.
 
@@ -106,7 +110,7 @@ When an upload is finished the API checks the stored file itself: its size must 
 - The bucket is private. The only way to read or write a file is a temporary link issued by the API to a signed-in Admin or Staff member.
 - Temporary links last one hour. They are never written to the audit log or the server logs, and are never stored by the web app. The audit log records that a link was issued (a "Played" entry for every playback link), not the link.
 - A person who has a playback link can watch that video until the link expires. That is true of any temporary link and is accepted.
-- **Accepted risk: a cover upload link stays usable for its hour.** A cover upload link is tied to the image type but not to its length, and it keeps working after the cover has been checked and attached. Whoever obtained the link (only a signed-in Staff or Admin can) could replace the stored cover file with other content, skipping the size and first-bytes checks, until the link expires. The bucket is private and links force the declared type when a cover is read, so the exposure is limited to what a staff member can already do through the portal. A later change that copies the file on completion would close it.
+- **Accepted risk: a cover upload link stays usable for its hour.** A cover upload link is tied to the image type but not to its length, and it keeps working after the cover has been checked and attached. Until the link expires (one hour), the person who obtained it can write arbitrary or oversized bytes into the stored cover file, which the portal's size and first-bytes checks would have refused. Only a signed-in Staff or Admin member can obtain such a link. When a cover is read, the link forces the declared content type, and the bucket is private. Copying the file on the server when the cover is completed would close this gap; that is future work.
 - The access key is limited to one bucket. To rotate it: create a new key (step 3), update `apps/api/.env`, restart the API, then delete the old key in Cloudflare.
 - Keep `apps/api/.env` out of version control and out of backups that many people can read.
 
