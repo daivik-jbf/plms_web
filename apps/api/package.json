@@ -11,7 +11,8 @@
     "db:migrate": "ts-node src/cli/migrate.ts",
     "db:migrate:prod": "node dist/cli/migrate.js",
     "admin:create": "ts-node src/cli/create-admin.ts",
-    "storage:check": "ts-node src/cli/storage-check.ts"
+    "storage:check": "ts-node src/cli/storage-check.ts",
+    "storage:cleanup": "ts-node src/cli/storage-cleanup.ts"
   },
   "jest": {
     "preset": "ts-jest",

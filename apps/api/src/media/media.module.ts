@@ -4,13 +4,14 @@ import { CoversService } from './covers.service';
 import { FoldersService } from './folders.service';
 import { ItemsService } from './items.service';
 import { MediaController } from './media.controller';
+import { UploadCleanupService } from './upload-cleanup.service';
 import { UploadsController } from './uploads.controller';
 import { UploadsService } from './uploads.service';
 
 @Module({
   imports: [AuditModule],
   controllers: [MediaController, UploadsController],
-  providers: [CoversService, FoldersService, ItemsService, UploadsService],
+  providers: [CoversService, FoldersService, ItemsService, UploadCleanupService, UploadsService],
   exports: [ItemsService],
 })
 export class MediaModule {}
