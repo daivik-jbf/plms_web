@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeError } from '../../api/client';
-import { playItem, type VideoItem } from '../../api/media';
+import { playItem, type MediaItem } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { Skeleton } from '../../components/Skeleton';
 import { formatDate } from '../../lib/format';
-import styles from './Videos.module.css';
+import styles from './Media.module.css';
 
 const PLAYBACK_FAILED = 'This video could not be played. Please try again later.';
 
-export function PlayerDialog({ item, onClose }: { item: VideoItem | null; onClose: () => void }) {
+export function PlayerDialog({ item, onClose }: { item: MediaItem | null; onClose: () => void }) {
   return (
     <Dialog open={item !== null} onClose={onClose} title={item?.title ?? 'Video'}>
       {item ? <Player item={item} /> : null}
@@ -18,7 +18,7 @@ export function PlayerDialog({ item, onClose }: { item: VideoItem | null; onClos
   );
 }
 
-function Player({ item }: { item: VideoItem }) {
+function Player({ item }: { item: MediaItem }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

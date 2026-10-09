@@ -8,7 +8,7 @@ import { TextField } from '../../components/TextField';
 import { readDuration } from '../../uploads/duration';
 import { checkCoverFile, checkMediaFile } from '../../uploads/limits';
 import { useUploads } from '../../uploads/UploadsContext';
-import styles from './Videos.module.css';
+import styles from './Media.module.css';
 
 interface UploadDialogProps {
   open: boolean;

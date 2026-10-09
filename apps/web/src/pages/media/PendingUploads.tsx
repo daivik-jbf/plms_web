@@ -8,7 +8,7 @@ import { Table } from '../../components/Table';
 import { formatBytes, formatDateTime } from '../../lib/format';
 import { MEDIA_KINDS } from '../../uploads/limits';
 import { FileMismatchError, useUploads } from '../../uploads/UploadsContext';
-import styles from './Videos.module.css';
+import styles from './Media.module.css';
 
 interface PendingUploadsProps {
   folderId: string;

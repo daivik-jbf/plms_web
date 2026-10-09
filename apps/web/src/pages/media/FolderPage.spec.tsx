@@ -3,14 +3,17 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Folder, VideoItem } from '../../api/media';
+import type { Folder, MediaItem } from '../../api/media';
 import type { MockResponse } from '../../test/fetch-mock';
+import { CATEGORIES } from '../../media/categories';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
 import { type UploadJob, UploadsContext, type UploadsValue } from '../../uploads/UploadsContext';
 import { FolderPage } from './FolderPage';
 
-const folder: Folder = { id: 'f1', name: 'Safety Training', position: 0, itemCount: 3 };
-const item = (overrides: Partial<VideoItem> & { id: string; title: string }): VideoItem => ({
+const VIDEOS = CATEGORIES.find((entry) => entry.slug === 'videos')!;
+
+const folder: Folder = { id: 'f1', name: 'Safety Training', position: 0, itemCount: 3, category: 'video' };
+const item = (overrides: Partial<MediaItem> & { id: string; title: string }): MediaItem => ({
   folderId: 'f1',
   description: null,
   durationSeconds: 724,
@@ -20,9 +23,10 @@ const item = (overrides: Partial<VideoItem> & { id: string; title: string }): Vi
   createdBy: { id: 'u1', name: 'Anita Rao' },
   createdAt: '2026-10-08T10:00:00Z',
   position: 0,
+  category: 'video',
   ...overrides,
 });
-const fixture: VideoItem[] = [
+const fixture: MediaItem[] = [
   item({ id: 'v1', title: 'Fire exits', description: 'Where to go.', coverUrl: 'https://cdn.example/c1?sig=1' }),
   item({ id: 'v2', title: 'First aid basics', durationSeconds: null, sizeBytes: 280 * 1024 ** 2, position: 1 }),
   item({ id: 'v3', title: '<b>Kitchen</b> hygiene', position: 2, status: 'uploading', createdBy: { id: 'staff-1', name: 'Ben Okoye' } }),
@@ -30,7 +34,7 @@ const fixture: VideoItem[] = [
 
 type Override = MockResponse | ((body: Record<string, unknown>) => MockResponse);
 
-function startServer(overrides: Record<string, Override> = {}, items: VideoItem[] = fixture, folders: Folder[] = [folder]) {
+function startServer(overrides: Record<string, Override> = {}, items: MediaItem[] = fixture, folders: Folder[] = [folder]) {
   const state = { items: structuredClone(items) };
   const calls: { key: string; body: Record<string, unknown> }[] = [];
   mockSession(STAFF, (url, init) => {
@@ -81,7 +85,7 @@ function UploadsHarness({ initial }: { initial: UploadsValue }) {
   return (
     <UploadsContext.Provider value={value}>
       <Routes>
-        <Route path="/videos/:folderId" element={<FolderPage />} />
+        <Route path="/videos/:folderId" element={<FolderPage category={VIDEOS} />} />
       </Routes>
     </UploadsContext.Provider>
   );

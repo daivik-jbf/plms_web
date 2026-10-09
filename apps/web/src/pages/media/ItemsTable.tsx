@@ -1,21 +1,21 @@
-import type { VideoItem } from '../../api/media';
+import type { MediaItem } from '../../api/media';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Table } from '../../components/Table';
 import { formatBytes, formatDate, formatDuration } from '../../lib/format';
-import styles from './Videos.module.css';
+import styles from './Media.module.css';
 
-interface VideosTableProps {
-  items: VideoItem[];
+interface ItemsTableProps {
+  items: MediaItem[];
   busy: boolean;
   // Percent sent for videos being uploaded from this browser right now, by item id.
   progress: Record<string, number>;
-  onOpen: (item: VideoItem) => void;
-  onEdit: (item: VideoItem) => void;
-  onMove: (item: VideoItem, delta: -1 | 1) => void;
+  onOpen: (item: MediaItem) => void;
+  onEdit: (item: MediaItem) => void;
+  onMove: (item: MediaItem, delta: -1 | 1) => void;
 }
 
-export function VideosTable({ items, busy, progress, onOpen, onEdit, onMove }: VideosTableProps) {
+export function ItemsTable({ items, busy, progress, onOpen, onEdit, onMove }: ItemsTableProps) {
   // Only ready videos can be ordered; a video that is still uploading keeps its place until it finishes.
   const ready = items.filter((item) => item.status === 'ready');
 

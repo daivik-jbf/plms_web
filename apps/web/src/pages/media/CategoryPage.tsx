@@ -7,12 +7,14 @@ import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
 import { Table } from '../../components/Table';
+import type { CategoryConfig } from '../../media/categories';
 import { FolderDialog, type FolderDialogMode } from './FolderDialog';
-import styles from './Videos.module.css';
+import styles from './Media.module.css';
 
 type Notice = { tone: 'error' | 'success'; text: string };
 
-export function VideosPage() {
+// The folders of one category (Videos, Movies, Podcasts or Songs).
+export function CategoryPage({ category }: { category: CategoryConfig }) {
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<FolderDialogMode | null>(null);
@@ -21,12 +23,12 @@ export function VideosPage() {
 
   const load = useCallback(async () => {
     try {
-      setFolders(await listFolders());
+      setFolders(await listFolders(category.slug));
       setLoadError(null);
     } catch (error) {
       setLoadError(describeError(error));
     }
-  }, []);
+  }, [category.slug]);
 
   useEffect(() => {
     void load();
@@ -40,7 +42,7 @@ export function VideosPage() {
     setBusy(true);
     setNotice(null);
     try {
-      setFolders(await reorderFolders(ids));
+      setFolders(await reorderFolders(category.slug, ids));
     } catch (error) {
       setNotice({ tone: 'error', text: describeError(error) });
       await load();
@@ -58,7 +60,7 @@ export function VideosPage() {
   return (
     <>
       <div className={styles.header}>
-        <h1>Videos</h1>
+        <h1>{category.label}</h1>
         <Button onClick={() => setDialog({ kind: 'create' })}>New folder</Button>
       </div>
 
@@ -80,13 +82,13 @@ export function VideosPage() {
       ) : folders === null ? (
         <Skeleton />
       ) : folders.length === 0 ? (
-        <EmptyState title="No folders yet">Create a folder to start adding videos.</EmptyState>
+        <EmptyState title="No folders yet">{`Create a folder to start adding ${category.nounPlural}.`}</EmptyState>
       ) : (
-        <Table caption="Video folders">
+        <Table caption={`${category.nounTitle} folders`}>
           <thead>
             <tr>
               <th scope="col">Folder</th>
-              <th scope="col">Videos</th>
+              <th scope="col">{category.label}</th>
               <th scope="col">Actions</th>
             </tr>
           </thead>
@@ -94,14 +96,14 @@ export function VideosPage() {
             {folders.map((folder, index) => (
               <tr key={folder.id}>
                 <td data-label="Folder">
-                  <Link className={styles.name} to={`/videos/${folder.id}`}>
+                  <Link className={styles.name} to={`/${category.slug}/${folder.id}`}>
                     {folder.name}
                   </Link>
                 </td>
-                <td data-label="Videos">{folder.itemCount}</td>
+                <td data-label={category.label}>{folder.itemCount}</td>
                 <td data-label="Actions">
                   <div className={styles.actions}>
-                    <Link className={styles.link} to={`/videos/${folder.id}`} aria-label={`Open ${folder.name}`}>
+                    <Link className={styles.link} to={`/${category.slug}/${folder.id}`} aria-label={`Open ${folder.name}`}>
                       Open
                     </Link>
                     <Button variant="secondary" size="small" disabled={busy} aria-label={`Rename ${folder.name}`} onClick={() => setDialog({ kind: 'rename', folder })}>
@@ -127,7 +129,7 @@ export function VideosPage() {
         </Table>
       )}
 
-      <FolderDialog mode={dialog} onClose={() => setDialog(null)} onSaved={onSaved} />
+      <FolderDialog slug={category.slug} mode={dialog} onClose={() => setDialog(null)} onSaved={onSaved} />
     </>
   );
 }

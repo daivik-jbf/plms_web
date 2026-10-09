@@ -1,22 +1,22 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { ApiError, describeError } from '../../api/client';
-import { updateItem, uploadCover, type VideoItem } from '../../api/media';
+import { updateItem, uploadCover, type MediaItem } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import { checkCoverFile } from '../../uploads/limits';
-import styles from './Videos.module.css';
+import styles from './Media.module.css';
 
-interface EditVideoDialogProps {
-  item: VideoItem | null;
+interface EditItemDialogProps {
+  item: MediaItem | null;
   onClose: () => void;
   // Called whenever something was saved, even if a later step failed, so the list never shows stale data.
   onChanged: () => void;
 }
 
-export function EditVideoDialog({ item, onClose, onChanged }: EditVideoDialogProps) {
+export function EditItemDialog({ item, onClose, onChanged }: EditItemDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
     <Dialog open={item !== null} onClose={onClose} title="Edit video" blocked={busy}>
@@ -33,7 +33,7 @@ function EditForm({
   setBusy,
   onClose,
   onChanged,
-}: Pick<EditVideoDialogProps, 'onClose' | 'onChanged'> & { item: VideoItem; busy: boolean; setBusy: (busy: boolean) => void }) {
+}: Pick<EditItemDialogProps, 'onClose' | 'onChanged'> & { item: MediaItem; busy: boolean; setBusy: (busy: boolean) => void }) {
   const titleRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState(item.title);

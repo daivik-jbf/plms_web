@@ -103,6 +103,20 @@ describe('AppShell', () => {
     );
     expect(await screen.findByText('Uploads in progress: 0')).toBeInTheDocument();
   });
+
+  it('lists the four media categories after the Dashboard, for everyone', async () => {
+    renderShell(STAFF);
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent).slice(0, 5)).toEqual(['Dashboard', 'Videos', 'Movies', 'Podcasts', 'Songs']);
+    for (const [name, href] of [
+      ['Videos', '/videos'],
+      ['Movies', '/movies'],
+      ['Podcasts', '/podcasts'],
+      ['Songs', '/songs'],
+    ]) {
+      expect(within(nav).getByRole('link', { name })).toHaveAttribute('href', href);
+    }
+  });
 });
 
 const song: DockTrack = { itemId: 's1', title: 'Morning song', categoryLabel: 'Songs', folderName: 'Road trip', coverUrl: null };

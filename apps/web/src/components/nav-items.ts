@@ -1,3 +1,5 @@
+import { CATEGORIES } from '../media/categories';
+
 export interface NavItem {
   to: string;
   label: string;
@@ -9,7 +11,7 @@ export interface NavItem {
 // Pages appear here only once they exist. Later tasks append their entries.
 export const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', group: 'main', end: true },
-  { to: '/videos', label: 'Videos', group: 'main' },
+  ...CATEGORIES.map((category): NavItem => ({ to: `/${category.slug}`, label: category.label, group: 'main' })),
   { to: '/staff', label: 'Staff', group: 'admin', adminOnly: true },
   { to: '/audit', label: 'Audit log', group: 'admin', adminOnly: true },
   { to: '/account', label: 'My account', group: 'account' },
