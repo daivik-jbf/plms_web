@@ -257,14 +257,17 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         // Already gone on the server is the outcome we wanted.
         if (!(error instanceof ApiError && error.status === 404)) {
-          patch(id, { status: 'failed', message: describeUploadError(error) });
+          const message = describeUploadError(error);
+          // An upload from before a reload has no entry in the panel to show the problem in, so the caller does.
+          if (!jobs.some((job) => job.id === id)) throw new Error(message, { cause: error });
+          patch(id, { status: 'failed', message });
           return;
         }
       }
       sources.current.delete(id);
       setJobs((list) => list.filter((job) => job.id !== id));
     },
-    [patch],
+    [jobs, patch],
   );
 
   const dismiss = useCallback((id: string) => {

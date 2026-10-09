@@ -130,6 +130,23 @@ describe('UploadsProvider', () => {
     expect(calls.some((call) => call.key === 'POST /api/media/uploads/u1/complete')).toBe(false);
   });
 
+  it('keeps a running upload in the panel as failed when the server refuses to cancel it', async () => {
+    startServer({ 'DELETE /api/media/uploads/u1': { status: 500, body: {} } });
+    sendPiece.mockImplementation((_url, _body, _progress, signal) => new Promise<string>((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))));
+    setup();
+    await act(() => value.start(input));
+    await screen.findByText(/Fire exits:sending/);
+    await act(() => value.cancel('u1'));
+    expect(await screen.findByText(/Fire exits:failed:.*Something went wrong/)).toBeInTheDocument();
+  });
+
+  it('tells the caller when the server refuses to cancel an upload that is not in the panel', async () => {
+    startServer({ 'DELETE /api/media/uploads/u9': { status: 500, body: {} } });
+    setup();
+    await expect(act(() => value.cancel('u9'))).rejects.toThrow('Something went wrong');
+    expect(value.jobs).toEqual([]);
+  });
+
   it('warns before the tab is closed while sending, and stops warning afterwards', async () => {
     startServer();
     // The server announces three pieces, so three pieces are in flight at once; each is released separately.

@@ -1,9 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PendingUpload } from '../../api/media';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
-import { FileMismatchError, type UploadJob, UploadsContext, type UploadsValue } from '../../uploads/UploadsContext';
+import { FileMismatchError, type UploadJob, UploadsContext, UploadsProvider, type UploadsValue } from '../../uploads/UploadsContext';
 import { PendingUploads } from './PendingUploads';
 
 const pending = (overrides: Partial<PendingUpload> & { fileId: string }): PendingUpload => ({
@@ -17,7 +17,7 @@ const pending = (overrides: Partial<PendingUpload> & { fileId: string }): Pendin
 });
 
 function setup(list: PendingUpload[], jobs: UploadJob[] = [], overrides: Partial<UploadsValue> = {}) {
-  mockSession(STAFF, (url) => (url === '/api/media/uploads/mine' ? { body: list } : { status: 404, body: {} }));
+  const fetchMock = mockSession(STAFF, (url) => (url === '/api/media/uploads/mine' ? { body: list } : { status: 404, body: {} }));
   const value: UploadsValue = { jobs, finishedCount: 0, start: vi.fn(), resume: vi.fn(async () => undefined), retry: vi.fn(), cancel: vi.fn(async () => undefined), dismiss: vi.fn(), ...overrides };
   const onChanged = vi.fn();
   const view = renderWithSession(
@@ -25,8 +25,14 @@ function setup(list: PendingUpload[], jobs: UploadJob[] = [], overrides: Partial
       <PendingUploads folderId="f1" reloadKey={0} onChanged={onChanged} />
     </UploadsContext.Provider>,
   );
-  return { value, onChanged, view };
+  return { value, onChanged, view, fetchMock };
 }
+
+const listWasFetched = (fetchMock: ReturnType<typeof setup>['fetchMock']) =>
+  waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/media/uploads/mine')).toBe(true));
+
+// Lets the response that was just received be turned into state before the test looks at the page.
+const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
 
 describe('PendingUploads', () => {
   beforeEach(() => vi.unstubAllGlobals());
@@ -40,13 +46,16 @@ describe('PendingUploads', () => {
 
   it('does not list uploads that are running in this browser right now', async () => {
     const running: UploadJob = { id: 'a', itemId: 'item-a', folderId: 'f1', title: 'Mine here', fileName: 'fire.mp4', sizeBytes: 5, bytesSent: 1, status: 'sending', message: null, coverWarning: false };
-    setup([pending({ fileId: 'a', title: 'Mine here' })], [running]);
-    await waitFor(() => expect(screen.queryByRole('table', { name: 'Unfinished uploads' })).toBeNull());
+    setup([pending({ fileId: 'a', title: 'Mine here' }), pending({ fileId: 'c', title: 'Stopped by a reload' })], [running]);
+    expect(await screen.findByText('Stopped by a reload')).toBeInTheDocument();
+    expect(screen.queryByText('Mine here')).toBeNull();
   });
 
   it('renders nothing when there are none', async () => {
-    const { view } = setup([]);
-    await waitFor(() => expect(view.container).toBeEmptyDOMElement());
+    const { view, fetchMock } = setup([]);
+    await listWasFetched(fetchMock);
+    await settle();
+    expect(view.container).toBeEmptyDOMElement();
   });
 
   it('resumes with the file the person chooses', async () => {
@@ -90,5 +99,25 @@ describe('PendingUploads', () => {
     setup([pending({ fileId: 'a', title: '<img src=x onerror=alert(1)>' })]);
     expect(await screen.findByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
     expect(document.querySelector('img')).toBeNull();
+  });
+
+  it('shows the failure and keeps the row when the real manager cannot cancel an upload from before a reload', async () => {
+    const fetchMock = mockSession(STAFF, (url, init) => {
+      if (url === '/api/media/uploads/mine') return { body: [pending({ fileId: 'a' })] };
+      if (url === '/api/media/uploads/a' && init.method === 'DELETE') return { status: 500, body: {} };
+      return { status: 404, body: {} };
+    });
+    const onChanged = vi.fn();
+    renderWithSession(
+      <UploadsProvider>
+        <PendingUploads folderId="f1" reloadKey={0} onChanged={onChanged} />
+      </UploadsProvider>,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel upload of Fire exits' }));
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Cancel this upload?' })).getByRole('button', { name: 'Cancel upload' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url) === '/api/media/uploads/a' && init?.method === 'DELETE')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Resume Fire exits' })).toBeInTheDocument();
+    expect(onChanged).not.toHaveBeenCalled();
   });
 });
