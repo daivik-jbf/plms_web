@@ -233,4 +233,59 @@ describe('FolderPage', () => {
     await waitFor(() => expect(dialog.querySelector('video')).toHaveAttribute('src', 'https://cdn.example/video-1?sig=1'));
     expect(calls.filter((call) => call.key === 'POST /api/media/items/v1/play')).toHaveLength(1);
   });
+
+  it('carries on from the same position after fetching a fresh link', async () => {
+    let plays = 0;
+    startServer({
+      'POST /api/media/items/v1/play': () => {
+        plays += 1;
+        return { body: { url: `https://cdn.example/video-${plays}?sig=1`, expiresAt: '2026-10-08T11:00:00Z', contentType: 'video/mp4' } };
+      },
+    });
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Fire exits' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Fire exits' });
+    await waitFor(() => expect(dialog.querySelector('video')).toHaveAttribute('src', 'https://cdn.example/video-1?sig=1'));
+    const video = dialog.querySelector('video') as HTMLVideoElement;
+    Object.defineProperty(video, 'currentTime', { configurable: true, writable: true, value: 42.5 });
+    const play = vi.fn(() => Promise.resolve());
+    video.play = play;
+
+    fireEvent.error(video);
+    await waitFor(() => expect(video).toHaveAttribute('src', 'https://cdn.example/video-2?sig=1'));
+    expect(plays).toBe(2);
+
+    // The browser starts from the beginning when a new source loads.
+    video.currentTime = 0;
+    fireEvent.loadedMetadata(video);
+    expect(video.currentTime).toBe(42.5);
+    expect(play).toHaveBeenCalledTimes(1);
+
+    // The position is only used once.
+    fireEvent.loadedMetadata(video);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows another fresh link after the video has played again', async () => {
+    let plays = 0;
+    startServer({
+      'POST /api/media/items/v1/play': () => {
+        plays += 1;
+        return { body: { url: `https://cdn.example/video-${plays}?sig=1`, expiresAt: '2026-10-08T11:00:00Z', contentType: 'video/mp4' } };
+      },
+    });
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Fire exits' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Fire exits' });
+    await waitFor(() => expect(dialog.querySelector('video')).toHaveAttribute('src', 'https://cdn.example/video-1?sig=1'));
+    const video = dialog.querySelector('video') as HTMLVideoElement;
+
+    fireEvent.error(video);
+    await waitFor(() => expect(video).toHaveAttribute('src', 'https://cdn.example/video-2?sig=1'));
+    fireEvent.playing(video);
+    fireEvent.error(video);
+    await waitFor(() => expect(video).toHaveAttribute('src', 'https://cdn.example/video-3?sig=1'));
+    expect(plays).toBe(3);
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+  });
 });
