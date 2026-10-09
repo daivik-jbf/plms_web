@@ -1,0 +1,109 @@
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.header h1 {
+  margin: 0;
+}
+
+.crumbs {
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.name {
+  display: block;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.link {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.videoCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cover,
+.coverPlaceholder {
+  flex: none;
+  width: 44px;
+  height: 28px;
+  border-radius: 4px;
+}
+
+.cover {
+  object-fit: cover;
+  background: var(--color-surface);
+}
+
+.coverPlaceholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.titleButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.titleButton:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.video {
+  width: 100%;
+  max-height: 70vh;
+  background: #000;
+}
+
+.description {
+  margin: var(--space-3) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
