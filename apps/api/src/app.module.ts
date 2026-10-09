@@ -11,6 +11,7 @@ import { DbModule } from './db/db.module';
 import { HealthModule } from './health/health.module';
 import { InvitesModule } from './invites/invites.module';
 import { MailModule } from './mail/mail.module';
+import { MediaModule } from './media/media.module';
 import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     HealthModule,
     InvitesModule,
     UsersModule,
+    MediaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
