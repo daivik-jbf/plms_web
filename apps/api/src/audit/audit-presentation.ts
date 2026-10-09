@@ -78,6 +78,25 @@ function exportedRows({ actor, entry }: Context): string {
   return `${actor} exported ${count} audit log row${count === 1 ? '' : 's'}`;
 }
 
+const UPLOAD_FAILURE_REASONS: Record<string, string> = {
+  size_mismatch: 'the file size did not match',
+  not_mp4: 'the file is not a valid MP4',
+  bad_image: 'the cover image is not valid',
+  expired: 'it was not finished within 24 hours',
+};
+
+function uploadFailed({ target, entry }: Context): string {
+  const code = entry.metadata?.reason;
+  const reason = typeof code === 'string' && Object.hasOwn(UPLOAD_FAILURE_REASONS, code) ? UPLOAD_FAILURE_REASONS[code] : undefined;
+  return reason ? `The upload of ${target} failed (${reason})` : `The upload of ${target} failed`;
+}
+
+function folderRenamed({ actor, target, entry }: Context): string {
+  const { before, after } = entry.changes?.name ?? {};
+  if (typeof before !== 'string' || typeof after !== 'string') return `${actor} renamed the folder ${target}`;
+  return `${actor} renamed the folder from ${before} to ${after}`;
+}
+
 const SPECS: Record<AuditAction, ActionSpec> = {
   'auth.login.succeeded': {
     label: 'Signed in',
@@ -153,6 +172,58 @@ const SPECS: Record<AuditAction, ActionSpec> = {
     summary: ({ actor }) => `${actor} opened the audit log`,
   },
   'audit.exported': { label: 'Exported audit log', tone: 'neutral', summary: exportedRows },
+  'content.folder.created': {
+    label: 'Folder created',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} created the folder ${target}`,
+  },
+  'content.folder.renamed': { label: 'Folder renamed', tone: 'change', summary: folderRenamed },
+  'content.folder.reordered': {
+    label: 'Folders reordered',
+    tone: 'neutral',
+    summary: ({ actor }) => `${actor} changed the order of the video folders`,
+  },
+  'content.video.added': {
+    label: 'Video added',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} added the video ${target}`,
+  },
+  'content.video.edited': {
+    label: 'Video edited',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} edited the video ${target}`,
+  },
+  'content.video.reordered': {
+    label: 'Videos reordered',
+    tone: 'neutral',
+    summary: ({ actor, target }) => `${actor} changed the order of the videos in ${target}`,
+  },
+  'content.video.cover_set': {
+    label: 'Cover set',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} set the cover image of ${target}`,
+  },
+  'file.upload_started': {
+    label: 'Upload started',
+    tone: 'neutral',
+    summary: ({ actor, target }) => `${actor} started uploading ${target}`,
+  },
+  'file.upload_completed': {
+    label: 'Upload finished',
+    tone: 'success',
+    summary: ({ actor, target }) => `${actor} finished uploading ${target}`,
+  },
+  'file.upload_failed': { label: 'Upload failed', tone: 'warning', summary: uploadFailed },
+  'file.upload_cancelled': {
+    label: 'Upload cancelled',
+    tone: 'neutral',
+    summary: ({ actor, target }) => `${actor} cancelled the upload of ${target}`,
+  },
+  'playback.played': {
+    label: 'Played',
+    tone: 'neutral',
+    summary: ({ actor, target }) => `${actor} played ${target}`,
+  },
 };
 
 export function presentAudit(entry: PresentableEntry): Presentation {

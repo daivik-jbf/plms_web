@@ -16,6 +16,18 @@ export const AUDIT_ACTIONS = [
   'user.role_changed',
   'audit.viewed',
   'audit.exported',
+  'content.folder.created',
+  'content.folder.renamed',
+  'content.folder.reordered',
+  'content.video.added',
+  'content.video.edited',
+  'content.video.reordered',
+  'content.video.cover_set',
+  'file.upload_started',
+  'file.upload_completed',
+  'file.upload_failed',
+  'file.upload_cancelled',
+  'playback.played',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
