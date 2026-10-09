@@ -3,7 +3,7 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { finished, pipeline } from 'node:stream/promises';
-import { Transform, type TransformCallback, type Readable } from 'node:stream';
+import { Readable, Transform, type TransformCallback } from 'node:stream';
 import { MAX_COVER_BYTES, MIN_PART_SIZE, PART_SIZE } from './storage.constants';
 import { type LinkPayload, signLink, verifyLink } from './signed-token';
 import { type ObjectInfo, type StoragePort, StorageError, type StoredPart } from './storage.port';
@@ -227,9 +227,24 @@ export class LocalStorage implements StoragePort {
   ): Promise<{ stream: Readable; size: number; start: number; end: number; contentType: string }> {
     const info = await this.head(key);
     if (!info) throw new StorageError('not_found', 'No such object.');
+    // An empty object has no bytes to stream (and no valid byte range).
+    if (info.size === 0) return { stream: Readable.from([]), size: 0, start: 0, end: -1, contentType: info.contentType };
     const start = range?.start ?? 0;
     const end = range?.end ?? info.size - 1;
-    return { stream: createReadStream(this.objectPath(key), { start, end }), size: info.size, start, end, contentType: info.contentType };
+    const stream = createReadStream(this.objectPath(key), { start, end });
+    // Wait until the file is really open: a file that vanished after the check above must surface here, as an
+    // error the caller can answer, and not later as an unhandled stream error.
+    try {
+      await new Promise<void>((resolve, reject) => {
+        stream.once('open', () => resolve());
+        stream.once('error', reject);
+      });
+    } catch (error) {
+      stream.destroy();
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new StorageError('not_found', 'No such object.');
+      throw error;
+    }
+    return { stream, size: info.size, start, end, contentType: info.contentType };
   }
 
   // ---- Internals ----

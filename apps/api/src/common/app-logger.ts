@@ -36,7 +36,9 @@ export class AppLogger implements LoggerService {
 }
 
 // Links for the development storage routes carry a signed token in the path; it must never reach the logs.
-const loggablePath = (path: string): string => (path.startsWith('/api/dev-storage/') ? '/api/dev-storage/[link]' : path);
+// Express routes paths case-insensitively, so the prefix is compared in lower case.
+const loggablePath = (path: string): string =>
+  path.toLowerCase().startsWith('/api/dev-storage/') ? '/api/dev-storage/[link]' : path;
 
 export function requestLogger(logger: AppLogger) {
   return (req: Request, res: Response, next: NextFunction): void => {

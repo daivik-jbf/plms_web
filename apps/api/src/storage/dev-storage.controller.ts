@@ -1,3 +1,4 @@
+import { pipeline } from 'node:stream/promises';
 import {
   Controller,
   ForbiddenException,
@@ -56,7 +57,13 @@ export class DevStorageController {
       res.status(416).setHeader('Content-Range', `bytes */${info.size}`).end();
       return;
     }
-    const opened = await local.openObject(link.key, range);
+    let opened;
+    try {
+      opened = await local.openObject(link.key, range);
+    } catch (error) {
+      if (error instanceof StorageError) throw new NotFoundException('Not found.');
+      throw error;
+    }
     res.status(range ? 206 : 200);
     res.setHeader('Content-Type', link.contentType);
     res.setHeader('Content-Length', String(opened.end - opened.start + 1));
@@ -64,7 +71,14 @@ export class DevStorageController {
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Content-Disposition', 'inline');
     if (range) res.setHeader('Content-Range', `bytes ${opened.start}-${opened.end}/${opened.size}`);
-    opened.stream.pipe(res);
+    try {
+      await pipeline(opened.stream, res);
+    } catch (error) {
+      // A viewer who closes the tab or seeks away aborts the transfer; pipeline has already closed the file. Once
+      // the headers are out there is nobody left to answer, so only an earlier failure is passed on.
+      if ((error as NodeJS.ErrnoException).code === 'ERR_STREAM_PREMATURE_CLOSE' || res.headersSent) return;
+      throw error;
+    }
   }
 
   private local(): LocalStorage {

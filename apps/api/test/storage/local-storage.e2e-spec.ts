@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { get as httpGet } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Readable } from 'node:stream';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -140,4 +142,67 @@ describe('LocalStorage development routes', () => {
     expect((open.body as Buffer).toString()).toBe('6789');
     expect(((await ranged('bytes=-3')).body as Buffer).toString()).toBe('789');
   });
+
+  it('reads back an empty object as an empty 200 and answers 416 to any range', async () => {
+    const k = `covers/${randomUUID()}`;
+    const put = await storage.presignPut(k, 'image/png', 3600);
+    expect((await http().put(put).set('Content-Type', 'image/png').send(Buffer.alloc(0))).status).toBe(200);
+    expect(await storage.head(k)).toEqual({ size: 0, contentType: 'image/png' });
+    const url = await storage.presignGet(k, 3600, { contentType: 'image/png' });
+    const whole = await http().get(url).buffer(true).parse(binary);
+    expect(whole.status).toBe(200);
+    expect(whole.headers['content-length']).toBe('0');
+    expect((whole.body as Buffer).length).toBe(0);
+    expect((await http().get(url).set('Range', 'bytes=0-').buffer(true).parse(binary)).status).toBe(416);
+    expect((await http().get(url).set('Range', 'bytes=-5').buffer(true).parse(binary)).status).toBe(416);
+  });
+
+  it('answers 404 and keeps running when the file vanishes between the check and the read', async () => {
+    const k = key();
+    const uploadId = await storage.createMultipartUpload(k, 'video/mp4');
+    const piece = await storage.presignUploadPart(k, uploadId, 1, 3600);
+    const etag = (await http().put(piece).set('Content-Type', 'application/octet-stream').send(Buffer.from('0123456789'))).headers.etag as string;
+    await storage.completeMultipartUpload(k, uploadId, [{ partNumber: 1, etag }]);
+    const url = await storage.presignGet(k, 3600, { contentType: 'video/mp4' });
+    const info = { size: 10, contentType: 'video/mp4' };
+    const head = jest.spyOn(storage, 'head').mockResolvedValueOnce(info).mockResolvedValueOnce(info);
+    await storage.delete(k);
+    const res = await http().get(url);
+    head.mockRestore();
+    expect(res.status).toBe(404);
+    expect((await http().get(url)).status).toBe(404);
+  });
+
+  it('closes the file when the viewer abandons a download midway', async () => {
+    const k = key();
+    const uploadId = await storage.createMultipartUpload(k, 'video/mp4');
+    const piece = await storage.presignUploadPart(k, uploadId, 1, 3600);
+    const etag = (await http().put(piece).set('Content-Type', 'application/octet-stream').send(Buffer.alloc(PART_SIZE))).headers.etag as string;
+    await storage.completeMultipartUpload(k, uploadId, [{ partNumber: 1, etag }]);
+    const url = await storage.presignGet(k, 3600, { contentType: 'video/mp4' });
+
+    let opened: Readable | undefined;
+    const original = storage.openObject.bind(storage);
+    const spy = jest.spyOn(storage, 'openObject').mockImplementation(async (...args) => {
+      const result = await original(...args);
+      opened = result.stream;
+      return result;
+    });
+    const server = app.getHttpServer().listen(0);
+    await new Promise<void>((resolve) => server.once('listening', resolve));
+    const port = (server.address() as { port: number }).port;
+    await new Promise<void>((resolve, reject) => {
+      const outgoing = httpGet({ host: '127.0.0.1', port, path: url }, (response) => {
+        response.once('data', () => {
+          outgoing.destroy();
+          resolve();
+        });
+      });
+      outgoing.on('error', () => undefined);
+      setTimeout(() => reject(new Error('no data arrived')), 5000).unref();
+    });
+    for (let waited = 0; !opened?.destroyed && waited < 3000; waited += 50) await new Promise((resolve) => setTimeout(resolve, 50));
+    spy.mockRestore();
+    expect(opened?.destroyed).toBe(true);
+  }, 15_000);
 });

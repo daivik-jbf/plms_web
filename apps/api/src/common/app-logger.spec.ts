@@ -21,4 +21,13 @@ describe('requestLogger', () => {
     expect(entry.path).toBe('/api/dev-storage/[link]');
     expect(JSON.stringify(entry)).not.toContain('eyJ');
   });
+
+  it.each(['/API/DEV-STORAGE/eyJvcCI6InB1dCJ9.c2lnbmF0dXJl', '/Api/Dev-Storage/eyJvcCI6InB1dCJ9.c2lnbmF0dXJl'])(
+    'redacts the link whatever the letter case of the path (%s)',
+    (path) => {
+      const entry = run(path);
+      expect(entry.path).toBe('/api/dev-storage/[link]');
+      expect(JSON.stringify(entry)).not.toContain('eyJ');
+    },
+  );
 });
