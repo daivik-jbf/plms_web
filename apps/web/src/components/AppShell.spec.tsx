@@ -1,12 +1,14 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Link, Route, Routes } from 'react-router-dom';
+import { beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import type { User } from '../api/auth';
 import { ProtectedRoute } from '../auth/ProtectedRoute';
+import { type DockTrack, usePlayer } from '../player/PlayerContext';
 import { ADMIN, mockSession, renderWithSession, STAFF } from '../test/session';
 import { useUploads } from '../uploads/UploadsContext';
 import { AppShell } from './AppShell';
+import styles from './AppShell.module.css';
 
 function UploadsProbe() {
   return <p>{`Uploads in progress: ${useUploads().jobs.length}`}</p>;
@@ -100,5 +102,94 @@ describe('AppShell', () => {
       </Routes>,
     );
     expect(await screen.findByText('Uploads in progress: 0')).toBeInTheDocument();
+  });
+});
+
+const song: DockTrack = { itemId: 's1', title: 'Morning song', categoryLabel: 'Songs', folderName: 'Road trip', coverUrl: null };
+const SONG_LINK = 'https://cdn.example/s1?sig=1';
+
+function PlayProbe() {
+  const { play } = usePlayer();
+  return (
+    <>
+      <button type="button" onClick={() => play(song)}>
+        Start song
+      </button>
+      <Link to="/other">Go elsewhere</Link>
+    </>
+  );
+}
+
+function renderWithPlayer() {
+  mockSession(ADMIN, (url, init) => {
+    if (url === '/api/auth/logout') return { status: 204 };
+    if (url === '/api/media/items/s1/play' && init.method === 'POST') {
+      return { body: { url: SONG_LINK, expiresAt: '2026-10-09T11:00:00Z', contentType: 'audio/mpeg' } };
+    }
+    return { status: 404, body: {} };
+  });
+  return renderWithSession(
+    <Routes>
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppShell />}>
+          <Route path="/" element={<PlayProbe />} />
+          <Route path="/other" element={<h1>Other page</h1>} />
+        </Route>
+      </Route>
+      <Route path="/login" element={<p>Login page</p>} />
+    </Routes>,
+  );
+}
+
+async function startSong() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Start song' }));
+  await waitFor(() => expect(document.querySelector('audio')).toHaveAttribute('src', SONG_LINK));
+  return document.querySelector('audio') as HTMLAudioElement;
+}
+
+describe('AppShell and the docked player', () => {
+  let pause: MockInstance<() => void>;
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+  });
+
+  it('keeps playing while the person moves to another page', async () => {
+    renderWithPlayer();
+    const audio = await startSong();
+    await userEvent.click(screen.getByRole('link', { name: 'Go elsewhere' }));
+    expect(await screen.findByRole('heading', { name: 'Other page' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Player' })).toHaveTextContent('Morning song');
+    expect(document.querySelector('audio')).toBe(audio);
+    expect(pause).not.toHaveBeenCalled();
+  });
+
+  it('gives the page room at the bottom only while the bar shows', async () => {
+    const { container } = renderWithPlayer();
+    const shell = () => container.firstElementChild as HTMLElement;
+    await screen.findByRole('button', { name: 'Start song' });
+    expect(shell()).toHaveClass(styles.shell!);
+    expect(shell()).not.toHaveClass(styles.withPlayer!);
+    await startSong();
+    expect(shell()).toHaveClass(styles.withPlayer!);
+    await userEvent.click(screen.getByRole('button', { name: 'Close player' }));
+    expect(shell()).not.toHaveClass(styles.withPlayer!);
+  });
+
+  it('puts the player next to the upload panel, inside the shell', async () => {
+    const { container } = renderWithPlayer();
+    await startSong();
+    expect(screen.getByRole('region', { name: 'Player' }).parentElement).toBe(container.firstElementChild);
+  });
+
+  it('stops and removes the player when the person signs out', async () => {
+    renderWithPlayer();
+    const audio = await startSong();
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByText('Login page')).toBeInTheDocument();
+    expect(document.querySelector('audio')).toBeNull();
+    expect(pause.mock.contexts).toContain(audio);
   });
 });

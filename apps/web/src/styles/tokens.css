@@ -35,5 +35,14 @@
   --space-12: 48px;
 
   --radius: 6px;
+  /* Height of the docked player bar; the page and the upload panel make room for it. */
+  --player-height: 4.5rem;
   --focus-outline: 2px solid var(--color-primary);
+}
+
+@media (max-width: 760px) {
+  :root {
+    /* Two rows on a phone. */
+    --player-height: 7.5rem;
+  }
 }

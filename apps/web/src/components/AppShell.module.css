@@ -4,6 +4,13 @@
   min-height: 100vh;
 }
 
+/* While the docked player shows: the page scrolls clear of the bar, and the upload panel (which reads
+   --player-offset) sits above it. */
+.withPlayer {
+  --player-offset: var(--player-height);
+  padding-bottom: var(--player-offset);
+}
+
 .sidebar {
   padding: var(--space-6) 0;
   border-right: 1px solid var(--color-border);

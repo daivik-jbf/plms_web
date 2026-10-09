@@ -1,10 +1,10 @@
 .panel {
   position: fixed;
   right: var(--space-4);
-  bottom: var(--space-4);
+  bottom: calc(var(--space-4) + var(--player-offset, 0px));
   z-index: 10;
   width: min(22rem, calc(100vw - 2 * var(--space-4)));
-  max-height: 60vh;
+  max-height: calc(60vh - var(--player-offset, 0px));
   overflow-y: auto;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border-strong);
