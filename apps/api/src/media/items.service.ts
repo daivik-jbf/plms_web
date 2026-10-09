@@ -34,10 +34,13 @@ interface ItemRow {
   category: MediaCategory;
 }
 
-const NOT_FOUND = 'Video not found.';
+// An item as stored, with the category of its folder (it decides the words and the audit target type).
+export type VisibleItem = MediaItem & { category: MediaCategory };
+
+const NOT_FOUND = 'Item not found.';
 const coverFile = alias(files, 'cover_file');
 
-// A video that is still uploading belongs to the person uploading it; to everyone else it does not exist yet.
+// An item that is still uploading belongs to the person uploading it; to everyone else it does not exist yet.
 const visibleTo = (item: Pick<MediaItem, 'status' | 'createdBy'>, actor: AuthUser): boolean =>
   item.status === 'ready' || item.createdBy === actor.id;
 
@@ -64,10 +67,14 @@ export class ItemsService {
     return this.toView(row);
   }
 
-  async requireVisible(executor: DbExecutor, itemId: string, actor: AuthUser): Promise<MediaItem> {
-    const [item] = await executor.select().from(mediaItems).where(eq(mediaItems.id, itemId));
-    if (!item || !visibleTo(item, actor)) throw new NotFoundException(NOT_FOUND);
-    return item;
+  async requireVisible(executor: DbExecutor, itemId: string, actor: AuthUser): Promise<VisibleItem> {
+    const [row] = await executor
+      .select({ item: mediaItems, category: mediaFolders.category })
+      .from(mediaItems)
+      .innerJoin(mediaFolders, eq(mediaFolders.id, mediaItems.folderId))
+      .where(eq(mediaItems.id, itemId));
+    if (!row || !visibleTo(row.item, actor)) throw new NotFoundException(NOT_FOUND);
+    return { ...row.item, category: row.category };
   }
 
   async update(actor: AuthUser, id: string, input: UpdateItemInput): Promise<ItemView> {
@@ -80,12 +87,14 @@ export class ItemsService {
         changes.description = { before: item.description, after: input.description };
       }
       if (Object.keys(changes).length === 0) return;
+      const folder = await this.requireFolder(tx, item.folderId);
       await tx.update(mediaItems).set({ title: input.title, description: input.description, updatedAt: new Date() }).where(eq(mediaItems.id, id));
       await this.audit.record(tx, {
         actor: actorOf(actor),
         action: 'content.video.edited',
-        target: { type: 'video', id, label: input.title ?? item.title },
+        target: { type: folder.category, id, label: input.title ?? item.title },
         changes,
+        metadata: { category: folder.category },
       });
     });
     return this.view(id, actor);
@@ -116,6 +125,7 @@ export class ItemsService {
           actor: actorOf(actor),
           action: 'content.video.reordered',
           target: { type: 'folder', id: folderId, label: folder.name },
+          metadata: { category: folder.category },
         });
       }
     });
@@ -125,13 +135,13 @@ export class ItemsService {
   async play(actor: AuthUser, itemId: string): Promise<{ url: string; expiresAt: string; contentType: string }> {
     const [row] = await this.rows(this.db, eq(mediaItems.id, itemId));
     if (!row || !visibleTo(row.item, actor)) throw new NotFoundException(NOT_FOUND);
-    if (row.item.status !== 'ready') throw new ConflictException('This video is still uploading.');
+    if (row.item.status !== 'ready') throw new ConflictException('This is still uploading.');
     const url = await this.storage.presignGet(row.media.storageKey, LINK_TTL_SECONDS, { contentType: row.media.contentType });
-    // Written only after the link exists, and every issued link is recorded (including a renewal while watching).
+    // Written only after the link exists, and every issued link is recorded (including a renewal while playing).
     await this.audit.record(this.db, {
       actor: actorOf(actor),
       action: 'playback.played',
-      target: { type: 'video', id: itemId, label: row.item.title },
+      target: { type: row.category, id: itemId, label: row.item.title },
     });
     return { url, expiresAt: new Date(Date.now() + LINK_TTL_SECONDS * 1000).toISOString(), contentType: row.media.contentType };
   }

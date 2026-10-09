@@ -5,7 +5,7 @@ import type { Database } from '../src/db/db.module';
 import { auditLog } from '../src/db/schema';
 import { bearer } from './helpers/auth';
 import { createTestApp } from './helpers/app';
-import { seedFolder, seedItem, signIn } from './helpers/media';
+import { mp3Bytes, seedFolder, seedItem, signIn, uniqueName, uploadVideo } from './helpers/media';
 import type { InMemoryStorage } from './support/in-memory-storage';
 
 describe('playing a video', () => {
@@ -53,5 +53,17 @@ describe('playing a video', () => {
     await http().post('/api/media/items/nope/play').set(...bearer(owner.session)).expect(400);
     const mine = await http().post(`/api/media/items/${itemId}/play`).set(...bearer(owner.session)).expect(409);
     expect(mine.body.message).toMatch(/still uploading/i);
+  });
+
+  it('gives a link for a song with its audio type and records the song as what was played', async () => {
+    const owner = await signIn(app, db);
+    const folder = await seedFolder(db, owner.user.id, uniqueName('Songs'), 'song');
+    const { itemId, res } = await uploadVideo(app, storage, owner.session, folder.id, mp3Bytes(120), { contentType: 'audio/mpeg', fileName: 's.mp3', title: 'Morning song' });
+    expect(res.status).toBe(200);
+    const play = await http().post(`/api/media/items/${itemId}/play`).set(...bearer(owner.session)).expect(200);
+    expect(play.body).toEqual({ url: expect.stringMatching(/^memory:\/\/get\//), expiresAt: expect.any(String), contentType: 'audio/mpeg' });
+    const [entry] = await db.select().from(auditLog).where(and(eq(auditLog.action, 'playback.played'), eq(auditLog.targetId, itemId)));
+    expect(entry).toMatchObject({ actorId: owner.user.id, targetType: 'song', targetLabel: 'Morning song' });
+    expect(JSON.stringify(entry)).not.toMatch(/memory:|audio\/[0-9a-f]{8}-/);
   });
 });

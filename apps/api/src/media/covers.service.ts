@@ -18,7 +18,7 @@ import { STORAGE, StorageError, type StoragePort } from '../storage/storage.port
 import { actorOf } from './actor';
 import { discardStoredFile } from './discard';
 import { imageMatches } from './file-checks';
-import { type ItemView, ItemsService } from './items.service';
+import { type ItemView, ItemsService, type VisibleItem } from './items.service';
 import type { CoverStartInput } from './media.schemas';
 
 const NOT_UPLOADED = 'The cover image has not been uploaded yet. Try again.';
@@ -81,7 +81,7 @@ export class CoversService {
     return this.items.view(item.id, actor);
   }
 
-  private async reject(actor: AuthUser, item: MediaItem, file: FileRow, reason: 'size_mismatch' | 'bad_image'): Promise<never> {
+  private async reject(actor: AuthUser, item: VisibleItem, file: FileRow, reason: 'size_mismatch' | 'bad_image'): Promise<never> {
     const removed = await this.db.transaction(async (tx) => {
       const [gone] = await tx
         .delete(files)
@@ -91,7 +91,7 @@ export class CoversService {
       await this.audit.record(tx, {
         actor: actorOf(actor),
         action: 'file.upload_failed',
-        target: { type: 'video', id: item.id, label: item.title },
+        target: { type: item.category, id: item.id, label: item.title },
         metadata: { fileId: file.id, reason },
       });
       return true;
@@ -101,7 +101,7 @@ export class CoversService {
   }
 
   // Lock order everywhere: the media item row first, then the file row.
-  private async attach(actor: AuthUser, item: MediaItem, file: FileRow): Promise<ItemView> {
+  private async attach(actor: AuthUser, item: VisibleItem, file: FileRow): Promise<ItemView> {
     const replaced = await this.db.transaction(async (tx) => {
       const [lockedItem] = await tx.select().from(mediaItems).where(eq(mediaItems.id, item.id)).for('update');
       const [lockedFile] = await tx.select().from(files).where(eq(files.id, file.id)).for('update');
@@ -121,8 +121,8 @@ export class CoversService {
       await this.audit.record(tx, {
         actor: actorOf(actor),
         action: 'content.video.cover_set',
-        target: { type: 'video', id: item.id, label: lockedItem.title },
-        metadata: { fileId: file.id },
+        target: { type: item.category, id: item.id, label: lockedItem.title },
+        metadata: { fileId: file.id, category: item.category },
       });
       return old;
     });

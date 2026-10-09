@@ -1,4 +1,5 @@
 import type { AuditChanges } from '../db/schema';
+import { type CategoryRule, MEDIA_CATEGORIES, type MediaCategory } from '../media/media-kinds';
 import type { AuditAction } from './audit.actions';
 
 export type AuditTone = 'change' | 'danger' | 'warning' | 'success' | 'neutral';
@@ -81,6 +82,7 @@ function exportedRows({ actor, entry }: Context): string {
 const UPLOAD_FAILURE_REASONS: Record<string, string> = {
   size_mismatch: 'the file size did not match',
   not_mp4: 'the file is not a valid MP4',
+  not_audio: 'the file is not a valid MP3 or M4A',
   bad_image: 'the cover image is not valid',
   expired: 'it was not finished within 24 hours',
 };
@@ -95,6 +97,13 @@ function folderRenamed({ actor, target, entry }: Context): string {
   const { before, after } = entry.changes?.name ?? {};
   if (typeof before !== 'string' || typeof after !== 'string') return `${actor} renamed the folder ${target}`;
   return `${actor} renamed the folder from ${before} to ${after}`;
+}
+
+// Content entries name their category in metadata.category since milestone 4. Older entries have none and are all about
+// videos, so they keep reading "the video". Own keys only: a stored value such as 'constructor' falls back too.
+function wordsFor(entry: PresentableEntry): CategoryRule {
+  const code = entry.metadata?.category;
+  return typeof code === 'string' && Object.hasOwn(MEDIA_CATEGORIES, code) ? MEDIA_CATEGORIES[code as MediaCategory] : MEDIA_CATEGORIES.video;
 }
 
 const SPECS: Record<AuditAction, ActionSpec> = {
@@ -181,27 +190,27 @@ const SPECS: Record<AuditAction, ActionSpec> = {
   'content.folder.reordered': {
     label: 'Folders reordered',
     tone: 'neutral',
-    summary: ({ actor }) => `${actor} changed the order of the video folders`,
+    summary: ({ actor, entry }) => `${actor} changed the order of the ${wordsFor(entry).noun} folders`,
   },
   'content.video.added': {
-    label: 'Video added',
+    label: 'Item added',
     tone: 'change',
-    summary: ({ actor, target }) => `${actor} added the video ${target}`,
+    summary: ({ actor, target, entry }) => `${actor} added the ${wordsFor(entry).noun} ${target}`,
   },
   'content.video.edited': {
-    label: 'Video edited',
+    label: 'Item edited',
     tone: 'change',
-    summary: ({ actor, target }) => `${actor} edited the video ${target}`,
+    summary: ({ actor, target, entry }) => `${actor} edited the ${wordsFor(entry).noun} ${target}`,
   },
   'content.video.reordered': {
-    label: 'Videos reordered',
+    label: 'Items reordered',
     tone: 'neutral',
-    summary: ({ actor, target }) => `${actor} changed the order of the videos in ${target}`,
+    summary: ({ actor, target, entry }) => `${actor} changed the order of the ${wordsFor(entry).nounPlural} in ${target}`,
   },
   'content.video.cover_set': {
     label: 'Cover set',
     tone: 'change',
-    summary: ({ actor, target }) => `${actor} set the cover image of ${target}`,
+    summary: ({ actor, target, entry }) => `${actor} set the cover image of the ${wordsFor(entry).noun} ${target}`,
   },
   'file.upload_started': {
     label: 'Upload started',
