@@ -4,7 +4,14 @@ import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodPipe } from '../common/zod.pipe';
 import { type AttachmentView, AttachmentsService } from '../media/attachments.service';
-import { type LibraryAttachmentInput, libraryAttachmentSchema, orderSchema } from '../media/media.schemas';
+import {
+  type LibraryAttachmentInput,
+  libraryAttachmentSchema,
+  orderSchema,
+  type StartAttachmentUploadInput,
+  startAttachmentUploadSchema,
+} from '../media/media.schemas';
+import { UploadsService } from '../media/uploads.service';
 import { type UpdateTopicInput, updateTopicSchema } from './courses.schemas';
 import { type TopicDetail, TopicsService, type TopicView } from './topics.service';
 
@@ -13,6 +20,7 @@ export class TopicsController {
   constructor(
     private readonly topics: TopicsService,
     private readonly attachments: AttachmentsService,
+    private readonly uploads: UploadsService,
   ) {}
 
   @Get(':id')
@@ -36,6 +44,16 @@ export class TopicsController {
     @Body(new ZodPipe(libraryAttachmentSchema)) body: LibraryAttachmentInput,
   ): Promise<AttachmentView> {
     return this.attachments.addFromLibrary(actor, id, body);
+  }
+
+  // Starts an upload into the topic; the pieces, status, completion, cancelling and listing then use /api/media/uploads/...
+  @Post(':id/attachments/uploads')
+  startUpload(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(startAttachmentUploadSchema)) body: StartAttachmentUploadInput,
+  ) {
+    return this.uploads.startAttachment(actor, id, body);
   }
 
   @Put(':id/attachments/order')

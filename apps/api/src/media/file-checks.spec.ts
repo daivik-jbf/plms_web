@@ -1,4 +1,4 @@
-import { audioMatches, hasMp3Signature, hasMp4Signature, hasPdfSignature, imageMatches, sanitizeFileName } from './file-checks';
+import { audioMatches, hasMp3Signature, hasMp4Signature, hasPdfSignature, imageMatches, sanitizeFileName, titleFromFileName } from './file-checks';
 
 const mp4 = [0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32];
 
@@ -120,5 +120,25 @@ describe('hasPdfSignature', () => {
     ['an MP4', mp4],
   ])('refuses %s', (_name, bytes) => {
     expect(hasPdfSignature(new Uint8Array(bytes))).toBe(false);
+  });
+});
+
+describe('titleFromFileName', () => {
+  it.each([
+    ['Exit map.pdf', 'Exit map'],
+    ['archive.tar.gz', 'archive.tar'],
+    ['no extension', 'no extension'],
+    ['../../etc/passwd.pdf', 'etc passwd'],
+    ['.pdf', 'pdf'],
+    ['  spaced   out .png ', 'spaced out'],
+    ['bad\u0007name.mp3', 'bad name'],
+    ['<b>x</b>.mp4', '<b>x< b>'],
+  ])('%j becomes the title %j', (input, expected) => {
+    expect(titleFromFileName(input)).toBe(expected);
+  });
+
+  it('cuts to 200 characters, the longest title there is', () => {
+    expect(titleFromFileName(`${'a'.repeat(300)}.pdf`)).toHaveLength(200);
+    expect(titleFromFileName(`${'a'.repeat(200)}.pdf`)).toHaveLength(200);
   });
 });

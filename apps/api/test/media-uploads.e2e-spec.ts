@@ -183,7 +183,16 @@ describe('uploading videos', () => {
       expect(finished.res.status).toBe(200);
       const res = await http().get('/api/media/uploads/mine').set(...bearer(owner.session)).expect(200);
       expect(res.body).toEqual([
-        { fileId: mine.fileId, itemId: mine.itemId, folderId: folder.id, title: 'Mine', fileName: 'mine.mp4', sizeBytes: 321, createdAt: expect.any(String) },
+        {
+          fileId: mine.fileId,
+          itemId: mine.itemId,
+          folderId: folder.id,
+          topicId: null,
+          title: 'Mine',
+          fileName: 'mine.mp4',
+          sizeBytes: 321,
+          createdAt: expect.any(String),
+        },
       ]);
     });
   });

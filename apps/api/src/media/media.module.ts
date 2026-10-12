@@ -13,6 +13,6 @@ import { UploadsService } from './uploads.service';
   imports: [AuditModule],
   controllers: [MediaController, UploadsController],
   providers: [AttachmentsService, CoversService, FoldersService, ItemsService, UploadCleanupService, UploadsService],
-  exports: [AttachmentsService, CoversService, ItemsService],
+  exports: [AttachmentsService, CoversService, ItemsService, UploadsService],
 })
 export class MediaModule {}

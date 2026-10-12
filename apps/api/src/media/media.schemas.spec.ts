@@ -1,4 +1,4 @@
-import { descriptionSchema, folderNameSchema, startUploadSchema, titleSchema } from './media.schemas';
+import { descriptionSchema, folderNameSchema, startAttachmentUploadSchema, startUploadSchema, titleSchema } from './media.schemas';
 
 const validUpload = {
   folderId: '00000000-0000-4000-8000-000000000000',
@@ -37,5 +37,32 @@ describe('media schemas and NUL characters', () => {
     expect(startUploadSchema.safeParse({ ...validUpload, contentType: 'audio/mpeg\u0000' }).success).toBe(false);
     expect(startUploadSchema.safeParse({ ...validUpload, sizeBytes: 0 }).success).toBe(false);
     expect(startUploadSchema.safeParse({ ...validUpload, sizeBytes: 2 ** 60 }).success).toBe(false);
+  });
+});
+
+describe('the attachment upload schema', () => {
+  const valid = { fileName: 'map.pdf', contentType: 'application/pdf', sizeBytes: 10 };
+
+  it('needs no title and accepts the longest one and a length', () => {
+    expect(startAttachmentUploadSchema.safeParse(valid).success).toBe(true);
+    expect(startAttachmentUploadSchema.safeParse({ ...valid, title: 'T'.repeat(200), durationSeconds: 90 }).success).toBe(true);
+  });
+
+  it.each([
+    ['an empty title', { title: '' }],
+    ['a title of 201 characters', { title: 'T'.repeat(201) }],
+    ['a NUL character in the title', { title: 'a\u0000b' }],
+    ['no file name', { fileName: '' }],
+    ['a NUL character in the file name', { fileName: 'a\u0000.pdf' }],
+    ['no type', { contentType: '' }],
+    ['an empty file', { sizeBytes: 0 }],
+    ['a fractional size', { sizeBytes: 1.5 }],
+    ['a negative length', { durationSeconds: -1 }],
+  ])('refuses %s', (_name, bad) => {
+    expect(startAttachmentUploadSchema.safeParse({ ...valid, ...bad }).success).toBe(false);
+  });
+
+  it('leaves the allowed type and size to the declared kind', () => {
+    expect(startAttachmentUploadSchema.safeParse({ ...valid, contentType: 'application/zip', sizeBytes: 3 * 1024 ** 3 }).success).toBe(true);
   });
 });

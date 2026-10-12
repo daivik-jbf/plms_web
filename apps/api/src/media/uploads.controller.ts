@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodPipe } from '../common/zod.pipe';
+import type { AttachmentView } from './attachments.service';
 import type { ItemView } from './items.service';
 import { completeUploadSchema, partUrlsSchema, startUploadSchema } from './media.schemas';
 import { UploadsService } from './uploads.service';
@@ -46,7 +47,7 @@ export class UploadsController {
     @CurrentUser() actor: AuthUser,
     @Param('fileId', ParseUUIDPipe) fileId: string,
     @Body(new ZodPipe(completeUploadSchema)) body: z.infer<typeof completeUploadSchema>,
-  ): Promise<ItemView> {
+  ): Promise<ItemView | AttachmentView> {
     return this.uploads.complete(actor, fileId, body.parts);
   }
 

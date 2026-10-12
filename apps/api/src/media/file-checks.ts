@@ -12,6 +12,12 @@ export function sanitizeFileName(input: string): string {
   return cleaned === '' ? 'video.mp4' : cleaned;
 }
 
+// A title made from a file name: tidied like any stored file name, without its extension, at most 200 characters (the
+// longest title). The tidied name never starts with a space or a dot, so the title is never empty.
+export function titleFromFileName(input: string): string {
+  return sanitizeFileName(input).replace(/\.[^.]+$/, '').slice(0, 200).trim();
+}
+
 const startsWith = (bytes: Uint8Array, offset: number, expected: number[]): boolean =>
   bytes.length >= offset + expected.length && expected.every((value, index) => bytes[offset + index] === value);
 

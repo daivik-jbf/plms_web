@@ -37,16 +37,24 @@ export const updateItemSchema = z
 
 const MAX_PARTS = partCountFor(MAX_VIDEO_BYTES);
 
+// The file an upload starts with. Which types and sizes are allowed depends on the folder's category (library) or on the
+// declared type (attachments), so the service checks them (media-kinds.ts).
+const uploadFileFields = {
+  fileName: z.string().min(1, 'The file needs a name.').max(1000).refine(hasNoNul, NUL_MESSAGE),
+  contentType: z.string().min(1, 'Choose a file.').max(100, 'Choose a file.').refine(hasNoNul, NUL_MESSAGE),
+  sizeBytes: z.number('Choose a file.').int('Choose a file.').min(1, 'That file is empty.'),
+  durationSeconds: z.number().int().min(0).max(1_000_000).nullish(),
+};
+
 export const startUploadSchema = z.object({
   folderId: z.uuid(),
   title: titleSchema,
   description: descriptionSchema.nullish(),
-  fileName: z.string().min(1, 'The file needs a name.').max(1000).refine(hasNoNul, NUL_MESSAGE),
-  // Which types and sizes are allowed depends on the folder's category, so the service checks them (media-kinds.ts).
-  contentType: z.string().min(1, 'Choose a file.').max(100, 'Choose a file.').refine(hasNoNul, NUL_MESSAGE),
-  sizeBytes: z.number('Choose a file.').int('Choose a file.').min(1, 'That file is empty.'),
-  durationSeconds: z.number().int().min(0).max(1_000_000).nullish(),
+  ...uploadFileFields,
 });
+
+// An attachment has no folder, and its title defaults to the file name.
+export const startAttachmentUploadSchema = z.object({ title: titleSchema.optional(), ...uploadFileFields });
 
 export const partUrlsSchema = z.object({
   partNumbers: z.array(z.number().int().min(1).max(MAX_PARTS)).min(1).max(MAX_PART_URLS_PER_REQUEST),
@@ -72,3 +80,4 @@ export type StartUploadInput = z.infer<typeof startUploadSchema>;
 export type UpdateItemInput = z.infer<typeof updateItemSchema>;
 export type CoverStartInput = z.infer<typeof coverStartSchema>;
 export type LibraryAttachmentInput = z.infer<typeof libraryAttachmentSchema>;
+export type StartAttachmentUploadInput = z.infer<typeof startAttachmentUploadSchema>;

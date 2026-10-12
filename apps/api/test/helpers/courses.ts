@@ -5,7 +5,7 @@ import type { Database, DbTransaction } from '../../src/db/db.module';
 import { files, type Lesson, lessons, topicAttachments, type Topic, topics } from '../../src/db/schema';
 import type { InMemoryStorage } from '../support/in-memory-storage';
 import { bearer, type Session } from './auth';
-import { m4aBytes, mp4Bytes, pdfBytes, pngBytes, uniqueName } from './media';
+import { completeViaApi, m4aBytes, mp4Bytes, pdfBytes, pngBytes, putPieces, type StartedUpload, uniqueName } from './media';
 
 export interface CourseBody {
   id: string;
@@ -168,4 +168,34 @@ export async function seedAttachment(db: Database, options: SeedAttachmentOption
     })
     .returning();
   return { attachmentId: row.id, fileId: file.id, storageKey };
+}
+
+export async function startAttachmentUploadViaApi(
+  app: INestApplication,
+  session: Session,
+  topicId: string,
+  overrides: Record<string, unknown> = {},
+): Promise<StartedUpload> {
+  const res = await request(app.getHttpServer())
+    .post(`/api/topics/${topicId}/attachments/uploads`)
+    .set(...bearer(session))
+    .send({ fileName: 'Exit map.pdf', contentType: 'application/pdf', sizeBytes: 100, ...overrides })
+    .expect(201);
+  return res.body;
+}
+
+// The happy path end to end for an attachment (a PDF unless the body and overrides say otherwise). The declared size
+// defaults to the real size. `itemId` in the answer is the attachment's id.
+export async function uploadAttachment(
+  app: INestApplication,
+  storage: InMemoryStorage,
+  session: Session,
+  topicId: string,
+  body: Uint8Array = pdfBytes(100),
+  overrides: Record<string, unknown> = {},
+) {
+  const started = await startAttachmentUploadViaApi(app, session, topicId, { sizeBytes: body.length, ...overrides });
+  const parts = await putPieces(app, storage, session, started.fileId, body);
+  const res = await completeViaApi(app, session, started.fileId, parts);
+  return { ...started, parts, res };
 }
