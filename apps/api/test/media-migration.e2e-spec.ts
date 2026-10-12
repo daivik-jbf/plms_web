@@ -1,11 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { Client, Pool } from 'pg';
+import { Pool } from 'pg';
 import request from 'supertest';
 import { runMigrations } from '../src/db/migrate';
 import type { User } from '../src/db/schema';
@@ -13,47 +8,11 @@ import { PART_SIZE } from '../src/storage/storage.constants';
 import { bearer, loginMobile, type Session } from './helpers/auth';
 import { createTestApp } from './helpers/app';
 import { completeViaApi, mp4Bytes, pngBytes, putPieces } from './helpers/media';
+import { scratchDatabase } from './helpers/migrations';
 import { createUser } from './helpers/users';
 import type { InMemoryStorage } from './support/in-memory-storage';
 
-const MIGRATIONS = join(__dirname, '../drizzle');
-const base = new URL(process.env.DATABASE_URL as string);
-const dbName = `${base.pathname.slice(1).replace(/_test$/, '')}_migration_test`;
-const databaseUrl = new URL(base);
-databaseUrl.pathname = `/${dbName}`;
-const adminUrl = new URL(base);
-adminUrl.pathname = '/postgres';
-
-async function recreateDatabase(drop: boolean): Promise<void> {
-  const client = new Client({ connectionString: adminUrl.toString() });
-  await client.connect();
-  try {
-    await client.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
-    if (!drop) await client.query(`CREATE DATABASE "${dbName}"`);
-  } finally {
-    await client.end();
-  }
-}
-
-// Applies the migrations up to and including `lastIdx` from a copy of the migrations folder.
-async function migrateUpTo(lastIdx: number): Promise<void> {
-  const folder = await mkdtemp(join(tmpdir(), 'jbf-migrations-'));
-  try {
-    const journal = JSON.parse(await readFile(join(MIGRATIONS, 'meta/_journal.json'), 'utf8')) as { entries: { idx: number; tag: string }[] };
-    const entries = journal.entries.filter((entry) => entry.idx <= lastIdx);
-    await mkdir(join(folder, 'meta'));
-    await writeFile(join(folder, 'meta/_journal.json'), JSON.stringify({ ...journal, entries }));
-    for (const entry of entries) await copyFile(join(MIGRATIONS, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
-    const pool = new Pool({ connectionString: databaseUrl.toString() });
-    try {
-      await migrate(drizzle(pool), { migrationsFolder: folder });
-    } finally {
-      await pool.end();
-    }
-  } finally {
-    await rm(folder, { recursive: true, force: true });
-  }
-}
+const { url: databaseUrl, recreate, drop, migrateUpTo } = scratchDatabase('migration');
 
 describe('migration 0004 on a database that already holds videos, covers and an upload in progress', () => {
   const originalUrl = process.env.DATABASE_URL;
@@ -83,7 +42,7 @@ describe('migration 0004 on a database that already holds videos, covers and an 
   };
 
   beforeAll(async () => {
-    await recreateDatabase(false);
+    await recreate();
     await migrateUpTo(3);
     process.env.DATABASE_URL = databaseUrl.toString();
     const created = await createTestApp();
@@ -115,7 +74,7 @@ describe('migration 0004 on a database that already holds videos, covers and an 
     await app.close();
     await sql.end();
     process.env.DATABASE_URL = originalUrl;
-    await recreateDatabase(true);
+    await drop();
   });
 
   const http = () => request(app.getHttpServer());
@@ -140,7 +99,7 @@ describe('migration 0004 on a database that already holds videos, covers and an 
     expect(indexes).toContain('media_items_media_file_unique');
     expect(indexes).not.toContain('media_items_video_file_unique');
     const purposes = (await sql.query<{ value: string }>(`select unnest(enum_range(null::file_purpose))::text as value`)).rows.map((row) => row.value);
-    expect(purposes).toEqual(['video', 'cover', 'audio']);
+    expect(purposes).toEqual(['video', 'cover', 'audio', 'pdf', 'image']);
   });
 
   it('still lists and plays the ready video with its cover', async () => {

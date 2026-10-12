@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { bigint, check, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 
@@ -114,7 +114,8 @@ export const auditLog = pgTable(
   ],
 );
 
-export const filePurpose = pgEnum('file_purpose', ['video', 'cover', 'audio']);
+export const filePurpose = pgEnum('file_purpose', ['video', 'cover', 'audio', 'pdf', 'image']);
+export const attachmentKind = pgEnum('attachment_kind', ['video', 'audio', 'pdf', 'image']);
 export const fileStatus = pgEnum('file_status', ['pending', 'ready']);
 export const mediaCategory = pgEnum('media_category', ['video', 'movie', 'podcast', 'song']);
 export const mediaItemStatus = pgEnum('media_item_status', ['uploading', 'ready']);
@@ -186,8 +187,92 @@ export const mediaItems = pgTable(
   ],
 );
 
+export const courses = pgTable('courses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: text('title').notNull(),
+  description: text('description'),
+  position: integer('position').notNull(),
+  coverFileId: uuid('cover_file_id').references(() => files.id),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamptz('created_at').notNull().defaultNow(),
+  updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+});
+
+export const lessons = pgTable(
+  'lessons',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    courseId: uuid('course_id')
+      .notNull()
+      .references(() => courses.id),
+    title: text('title').notNull(),
+    position: integer('position').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('lessons_course_idx').on(table.courseId, table.position)],
+);
+
+export const topics = pgTable(
+  'topics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    lessonId: uuid('lesson_id')
+      .notNull()
+      .references(() => lessons.id),
+    title: text('title').notNull(),
+    description: text('description'),
+    position: integer('position').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('topics_lesson_idx').on(table.lessonId, table.position)],
+);
+
+// A file shown in a topic: uploaded into the topic (file_id) or picked from the library (library_item_id), never both.
+// A library attachment keeps following its item: while title is null the item's own title is shown.
+export const topicAttachments = pgTable(
+  'topic_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    topicId: uuid('topic_id')
+      .notNull()
+      .references(() => topics.id),
+    position: integer('position').notNull(),
+    kind: attachmentKind('kind').notNull(),
+    title: text('title'),
+    fileId: uuid('file_id').references(() => files.id),
+    libraryItemId: uuid('library_item_id').references(() => mediaItems.id),
+    durationSeconds: integer('duration_seconds'),
+    status: mediaItemStatus('status').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('topic_attachments_file_unique').on(table.fileId),
+    index('topic_attachments_topic_idx').on(table.topicId, table.position),
+    check('topic_attachments_one_source', sql`num_nonnulls(${table.fileId}, ${table.libraryItemId}) = 1`),
+    check('topic_attachments_title_present', sql`${table.title} is not null or ${table.libraryItemId} is not null`),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
 export type MediaFolder = typeof mediaFolders.$inferSelect;
 export type MediaItem = typeof mediaItems.$inferSelect;
+export type Course = typeof courses.$inferSelect;
+export type Lesson = typeof lessons.$inferSelect;
+export type Topic = typeof topics.$inferSelect;
+export type TopicAttachment = typeof topicAttachments.$inferSelect;
