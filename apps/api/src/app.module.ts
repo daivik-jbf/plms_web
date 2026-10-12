@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { RolesGuard } from './auth/roles.guard';
 import { ConfigModule, ENV } from './config/config.module';
 import type { Env } from './config/env';
+import { CoursesModule } from './courses/courses.module';
 import { DbModule } from './db/db.module';
 import { HealthModule } from './health/health.module';
 import { InvitesModule } from './invites/invites.module';
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module';
     InvitesModule,
     UsersModule,
     MediaModule,
+    CoursesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

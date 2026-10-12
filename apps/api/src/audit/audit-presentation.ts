@@ -108,6 +108,8 @@ function wordsFor(entry: PresentableEntry): CategoryRule {
   return typeof code === 'string' && Object.hasOwn(MEDIA_CATEGORIES, code) ? MEDIA_CATEGORIES[code as MediaCategory] : MEDIA_CATEGORIES.video;
 }
 
+const quoted = (text: string): string => `'${text}'`;
+
 const SPECS: Record<AuditAction, ActionSpec> = {
   'auth.login.succeeded': {
     label: 'Signed in',
@@ -213,6 +215,26 @@ const SPECS: Record<AuditAction, ActionSpec> = {
     label: 'Cover set',
     tone: 'change',
     summary: ({ actor, target, entry }) => `${actor} set the cover image of the ${wordsFor(entry).noun} ${target}`,
+  },
+  'content.course.created': {
+    label: 'Course created',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} created the course ${quoted(target)}`,
+  },
+  'content.course.edited': {
+    label: 'Course edited',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} edited the course ${quoted(target)}`,
+  },
+  'content.course.reordered': {
+    label: 'Courses reordered',
+    tone: 'neutral',
+    summary: ({ actor }) => `${actor} changed the order of the courses`,
+  },
+  'content.course.cover_set': {
+    label: 'Course cover set',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} set the cover image of the course ${quoted(target)}`,
   },
   'file.upload_started': {
     label: 'Upload started',

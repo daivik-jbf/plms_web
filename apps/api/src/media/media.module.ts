@@ -12,6 +12,6 @@ import { UploadsService } from './uploads.service';
   imports: [AuditModule],
   controllers: [MediaController, UploadsController],
   providers: [CoversService, FoldersService, ItemsService, UploadCleanupService, UploadsService],
-  exports: [ItemsService],
+  exports: [CoversService, ItemsService],
 })
 export class MediaModule {}
