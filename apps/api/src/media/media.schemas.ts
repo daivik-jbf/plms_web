@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { COVER_CONTENT_TYPES, MAX_COVER_BYTES, MAX_PART_URLS_PER_REQUEST, MAX_VIDEO_BYTES, partCountFor } from '../storage/storage.constants';
 
 // Postgres cannot store a NUL character in text, so refuse it up front rather than fail with a server error.
-const hasNoNul = (value: string): boolean => !value.includes('\u0000');
-const NUL_MESSAGE = 'Remove the invalid character.';
+export const hasNoNul = (value: string): boolean => !value.includes('\u0000');
+export const NUL_MESSAGE = 'Remove the invalid character.';
 
 export const folderNameSchema = z
   .string('Enter a folder name.')

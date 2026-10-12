@@ -33,3 +33,50 @@ describe('course audit presentation', () => {
     expect(course.every((action) => categoryOf(action) === 'content')).toBe(true);
   });
 });
+
+describe('lesson and topic audit presentation', () => {
+  it.each([
+    [
+      'content.lesson.added',
+      { targetLabel: 'Exits', metadata: { courseTitle: 'Fire safety' } },
+      'Lesson added',
+      'change',
+      "Anita Rao added the lesson 'Exits' to the course 'Fire safety'",
+    ],
+    ['content.lesson.added', { targetLabel: 'Exits' }, 'Lesson added', 'change', "Anita Rao added the lesson 'Exits'"],
+    [
+      'content.lesson.renamed',
+      { targetLabel: 'Exits', changes: { title: { before: 'Exist', after: 'Exits' } } },
+      'Lesson renamed',
+      'change',
+      "Anita Rao renamed the lesson from 'Exist' to 'Exits'",
+    ],
+    ['content.lesson.renamed', { targetLabel: 'Exits' }, 'Lesson renamed', 'change', "Anita Rao renamed the lesson 'Exits'"],
+    ['content.lesson.reordered', { targetLabel: 'Fire safety' }, 'Lessons reordered', 'neutral', "Anita Rao changed the order of the lessons in the course 'Fire safety'"],
+    [
+      'content.topic.added',
+      { targetLabel: 'Fire exits', metadata: { lessonTitle: 'Exits' } },
+      'Topic added',
+      'change',
+      "Anita Rao added the topic 'Fire exits' to the lesson 'Exits'",
+    ],
+    ['content.topic.added', { targetLabel: 'Fire exits' }, 'Topic added', 'change', "Anita Rao added the topic 'Fire exits'"],
+    ['content.topic.edited', { targetLabel: 'Fire exits' }, 'Topic edited', 'change', "Anita Rao edited the topic 'Fire exits'"],
+    ['content.topic.reordered', { targetLabel: 'Exits' }, 'Topics reordered', 'neutral', "Anita Rao changed the order of the topics in the lesson 'Exits'"],
+  ] as const)('%s', (action, overrides, label, tone, summary) => {
+    expect(presentAudit(entry({ action, ...overrides }))).toEqual({ label, tone, category: 'content', summary });
+  });
+
+  it('ignores parent names that are not text, including inherited object members', () => {
+    for (const courseTitle of [5, null, { x: 1 }, undefined]) {
+      expect(presentAudit(entry({ action: 'content.lesson.added', targetLabel: 'L', metadata: { courseTitle } })).summary).toBe("Anita Rao added the lesson 'L'");
+    }
+    expect(presentAudit(entry({ action: 'content.lesson.renamed', targetLabel: 'L', changes: { title: { before: 1, after: 'L' } } })).summary).toBe("Anita Rao renamed the lesson 'L'");
+  });
+
+  it('files the lesson and topic actions under content', () => {
+    const structure = AUDIT_ACTIONS.filter((action) => /^content\.(lesson|topic)\./.test(action));
+    expect(structure).toHaveLength(6);
+    expect(structure.every((action) => categoryOf(action) === 'content')).toBe(true);
+  });
+});

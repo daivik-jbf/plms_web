@@ -4,13 +4,24 @@ import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodPipe } from '../common/zod.pipe';
 import { type CoverStartInput, coverStartSchema, orderSchema } from '../media/media.schemas';
-import { type CreateCourseInput, createCourseSchema, type UpdateCourseInput, updateCourseSchema } from './courses.schemas';
+import {
+  type CreateCourseInput,
+  createCourseSchema,
+  type LessonInput,
+  lessonBodySchema,
+  type UpdateCourseInput,
+  updateCourseSchema,
+} from './courses.schemas';
 import { type CourseTree, CoursesService, type CourseView } from './courses.service';
+import { LessonsService } from './lessons.service';
 
 // Every route needs a signed-in person (Admin or Staff); there is no @Roles because both may do everything here.
 @Controller('courses')
 export class CoursesController {
-  constructor(private readonly courses: CoursesService) {}
+  constructor(
+    private readonly courses: CoursesService,
+    private readonly lessons: LessonsService,
+  ) {}
 
   @Get()
   list(): Promise<CourseView[]> {
@@ -58,5 +69,23 @@ export class CoursesController {
     @Param('fileId', ParseUUIDPipe) fileId: string,
   ): Promise<CourseTree> {
     return this.courses.completeCover(actor, id, fileId);
+  }
+
+  @Post(':id/lessons')
+  addLesson(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(lessonBodySchema)) body: LessonInput,
+  ): Promise<CourseTree> {
+    return this.lessons.add(actor, id, body);
+  }
+
+  @Put(':id/lessons/order')
+  reorderLessons(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(orderSchema)) body: z.infer<typeof orderSchema>,
+  ): Promise<CourseTree> {
+    return this.lessons.reorder(actor, id, body.ids);
   }
 }

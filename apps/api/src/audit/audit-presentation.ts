@@ -110,6 +110,18 @@ function wordsFor(entry: PresentableEntry): CategoryRule {
 
 const quoted = (text: string): string => `'${text}'`;
 
+// A text value from the entry's metadata, or null when it is missing or not text.
+const metaText = (entry: PresentableEntry, key: string): string | null => {
+  const value = entry.metadata?.[key];
+  return typeof value === 'string' ? value : null;
+};
+
+// "from 'a' to 'b'" for an entry that recorded a change of one text field, or null.
+const changedText = (entry: PresentableEntry, field: string): { before: string; after: string } | null => {
+  const { before, after } = entry.changes?.[field] ?? {};
+  return typeof before === 'string' && typeof after === 'string' ? { before, after } : null;
+};
+
 const SPECS: Record<AuditAction, ActionSpec> = {
   'auth.login.succeeded': {
     label: 'Signed in',
@@ -235,6 +247,45 @@ const SPECS: Record<AuditAction, ActionSpec> = {
     label: 'Course cover set',
     tone: 'change',
     summary: ({ actor, target }) => `${actor} set the cover image of the course ${quoted(target)}`,
+  },
+  'content.lesson.added': {
+    label: 'Lesson added',
+    tone: 'change',
+    summary: ({ actor, target, entry }) => {
+      const course = metaText(entry, 'courseTitle');
+      return course ? `${actor} added the lesson ${quoted(target)} to the course ${quoted(course)}` : `${actor} added the lesson ${quoted(target)}`;
+    },
+  },
+  'content.lesson.renamed': {
+    label: 'Lesson renamed',
+    tone: 'change',
+    summary: ({ actor, target, entry }) => {
+      const title = changedText(entry, 'title');
+      return title ? `${actor} renamed the lesson from ${quoted(title.before)} to ${quoted(title.after)}` : `${actor} renamed the lesson ${quoted(target)}`;
+    },
+  },
+  'content.lesson.reordered': {
+    label: 'Lessons reordered',
+    tone: 'neutral',
+    summary: ({ actor, target }) => `${actor} changed the order of the lessons in the course ${quoted(target)}`,
+  },
+  'content.topic.added': {
+    label: 'Topic added',
+    tone: 'change',
+    summary: ({ actor, target, entry }) => {
+      const lesson = metaText(entry, 'lessonTitle');
+      return lesson ? `${actor} added the topic ${quoted(target)} to the lesson ${quoted(lesson)}` : `${actor} added the topic ${quoted(target)}`;
+    },
+  },
+  'content.topic.edited': {
+    label: 'Topic edited',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} edited the topic ${quoted(target)}`,
+  },
+  'content.topic.reordered': {
+    label: 'Topics reordered',
+    tone: 'neutral',
+    summary: ({ actor, target }) => `${actor} changed the order of the topics in the lesson ${quoted(target)}`,
   },
   'file.upload_started': {
     label: 'Upload started',
