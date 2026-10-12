@@ -45,7 +45,7 @@ const topicsFixture: Record<string, TopicView> = {
 type Override = MockResponse | ((body: Record<string, unknown>) => MockResponse);
 
 function startServer(overrides: Record<string, Override> = {}, course: CourseTree = tree) {
-  const state = { course: structuredClone(course) };
+  const state = { course: structuredClone(course), topics: structuredClone(topicsFixture), added: 0 };
   const calls: { key: string; body: Record<string, unknown> }[] = [];
   mockSession(STAFF, (url, init) => {
     const key = `${init.method ?? 'GET'} ${url}`;
@@ -55,7 +55,42 @@ function startServer(overrides: Record<string, Override> = {}, course: CourseTre
     if (override) return typeof override === 'function' ? override(body) : override;
     if (key === 'GET /api/courses/c1') return { body: state.course };
     const found = /^GET \/api\/topics\/([^/]+)$/.exec(key);
-    if (found) return topicsFixture[found[1] as string] ? { body: topicsFixture[found[1] as string] } : { status: 404, body: { message: 'Topic not found.' } };
+    if (found) return state.topics[found[1] as string] ? { body: state.topics[found[1] as string] } : { status: 404, body: { message: 'Topic not found.' } };
+    const lessonOf = (id: string) => state.course.lessons.find((lesson) => lesson.id === id)!;
+    if (key === 'POST /api/courses/c1/lessons') {
+      state.added += 1;
+      state.course.lessons.push({ id: `l-new-${state.added}`, title: String(body.title), position: state.course.lessons.length, topics: [] });
+      return { status: 201, body: state.course };
+    }
+    const renameLesson = /^PATCH \/api\/lessons\/([^/]+)$/.exec(key);
+    if (renameLesson) {
+      lessonOf(renameLesson[1] as string).title = String(body.title);
+      return { body: state.course };
+    }
+    if (key === 'PUT /api/courses/c1/lessons/order') {
+      state.course.lessons = (body.ids as string[]).map((id, index) => ({ ...lessonOf(id), position: index }));
+      return { body: state.course };
+    }
+    const addTopic = /^POST \/api\/lessons\/([^/]+)\/topics$/.exec(key);
+    if (addTopic) {
+      state.added += 1;
+      const lesson = lessonOf(addTopic[1] as string);
+      lesson.topics.push({ id: `t-new-${state.added}`, title: String(body.title), position: lesson.topics.length, attachmentCount: 0 });
+      return { status: 201, body: state.course };
+    }
+    const reorderTopics = /^PUT \/api\/lessons\/([^/]+)\/topics\/order$/.exec(key);
+    if (reorderTopics) {
+      const lesson = lessonOf(reorderTopics[1] as string);
+      lesson.topics = (body.ids as string[]).map((id, index) => ({ ...lesson.topics.find((candidate) => candidate.id === id)!, position: index }));
+      return { body: state.course };
+    }
+    const editTopic = /^PATCH \/api\/topics\/([^/]+)$/.exec(key);
+    if (editTopic) {
+      const id = editTopic[1] as string;
+      Object.assign(state.topics[id]!, body);
+      if (typeof body.title === 'string') for (const lesson of state.course.lessons) for (const entry of lesson.topics) if (entry.id === id) entry.title = body.title;
+      return { body: state.topics[id] };
+    }
     if (key === 'PATCH /api/courses/c1') {
       Object.assign(state.course, body);
       return { body: state.course };
@@ -262,6 +297,188 @@ describe('CoursePage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
       expect(await screen.findByText('Title must be 200 characters or fewer.')).toBeInTheDocument();
       expect(screen.getByRole('dialog', { name: 'Edit course' })).toBeInTheDocument();
+    });
+  });
+});
+
+describe('CoursePage: building the course', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const lessonsInTree = () => within(screen.getByRole('tree', { name: 'Course contents' })).getAllByRole('treeitem').filter((item) => item.getAttribute('aria-level') === '1');
+
+  it('adds a lesson from a dialog and shows it at the end of the tree', async () => {
+    const calls = startServer();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add lesson' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add lesson' });
+    await userEvent.type(within(dialog).getByLabelText('Lesson title'), '  Alarms and drills ');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add lesson' }));
+    expect(await screen.findByText('Lesson "Alarms and drills" added.')).toBeInTheDocument();
+    expect(calls.find((call) => call.key === 'POST /api/courses/c1/lessons')?.body).toEqual({ title: 'Alarms and drills' });
+    expect(lessonsInTree().map((item) => item.getAttribute('aria-label'))).toEqual(['Exits', 'Equipment', 'Alarms and drills']);
+    expect(screen.queryByRole('dialog', { name: 'Add lesson' })).toBeNull();
+  });
+
+  it('offers Add lesson in an empty course too', async () => {
+    startServer({}, { ...tree, lessons: [] });
+    renderPage();
+    expect(await screen.findByText('No lessons yet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add lesson' })).toBeInTheDocument();
+  });
+
+  it('asks for a title before sending anything', async () => {
+    const calls = startServer();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add lesson' }));
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Add lesson' })).getByRole('button', { name: 'Add lesson' }));
+    expect(await screen.findByText('Enter a lesson title.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Lesson title')).toHaveFocus();
+    expect(calls.some((call) => call.key.startsWith('POST'))).toBe(false);
+  });
+
+  it('shows what the server says about the title and keeps the dialog open', async () => {
+    startServer({ 'POST /api/courses/c1/lessons': { status: 400, body: { message: 'Validation failed', fieldErrors: { title: ['Title must be 200 characters or fewer.'] } } } });
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add lesson' }));
+    await userEvent.type(screen.getByLabelText('Lesson title'), 'Long');
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Add lesson' })).getByRole('button', { name: 'Add lesson' }));
+    expect(await screen.findByText('Title must be 200 characters or fewer.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Add lesson' })).toBeInTheDocument();
+  });
+
+  it('shows a failure that is not about the title as an alert and keeps the dialog open', async () => {
+    startServer({ 'POST /api/courses/c1/lessons': { status: 500, body: {} } });
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add lesson' }));
+    await userEvent.type(screen.getByLabelText('Lesson title'), 'Alarms');
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Add lesson' })).getByRole('button', { name: 'Add lesson' }));
+    expect(await within(screen.getByRole('dialog', { name: 'Add lesson' })).findByRole('alert')).toHaveTextContent('Something went wrong');
+  });
+
+  it('cannot be dismissed while a title is being sent', async () => {
+    let release: (value: MockResponse) => void = () => undefined;
+    const pending = new Promise<MockResponse>((resolve) => (release = resolve));
+    startServer({ 'POST /api/courses/c1/lessons': () => pending as unknown as MockResponse });
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add lesson' }));
+    await userEvent.type(screen.getByLabelText('Lesson title'), 'Slow');
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Add lesson' })).getByRole('button', { name: 'Add lesson' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add lesson' });
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Close' })).toBeDisabled());
+    release({ status: 201, body: { ...tree, lessons: [...tree.lessons, { id: 'l-slow', title: 'Slow', position: 2, topics: [] }] } });
+    expect(await screen.findByText('Lesson "Slow" added.')).toBeInTheDocument();
+  });
+
+  it('renames a lesson, starting from its current title', async () => {
+    const calls = startServer();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Rename lesson Equipment' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rename lesson' });
+    const field = within(dialog).getByLabelText('Lesson title');
+    expect(field).toHaveValue('Equipment');
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Kit');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Lesson renamed to "Kit".')).toBeInTheDocument();
+    expect(calls.find((call) => call.key === 'PATCH /api/lessons/l2')?.body).toEqual({ title: 'Kit' });
+    expect(screen.getByRole('treeitem', { name: 'Kit' })).toBeInTheDocument();
+  });
+
+  it('adds a topic to a lesson and shows it in that lesson', async () => {
+    const calls = startServer();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a topic to Equipment' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add topic' });
+    await userEvent.type(within(dialog).getByLabelText('Topic title'), 'Extinguishers');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add topic' }));
+    expect(await screen.findByText('Topic "Extinguishers" added.')).toBeInTheDocument();
+    expect(calls.find((call) => call.key === 'POST /api/lessons/l2/topics')?.body).toEqual({ title: 'Extinguishers' });
+    expect(within(screen.getByRole('treeitem', { name: 'Equipment' })).getByRole('treeitem', { name: 'Extinguishers' })).toBeInTheDocument();
+  });
+
+  it('renames a topic and updates the open topic panel', async () => {
+    const calls = startServer();
+    renderPage('/courses/c1?topic=t1');
+    await screen.findByRole('heading', { level: 2, name: 'Fire exits' });
+    await userEvent.click(screen.getByRole('button', { name: 'Rename topic Fire exits' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rename topic' });
+    const field = within(dialog).getByLabelText('Topic title');
+    expect(field).toHaveValue('Fire exits');
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Exit routes');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Topic renamed to "Exit routes".')).toBeInTheDocument();
+    expect(calls.find((call) => call.key === 'PATCH /api/topics/t1')?.body).toEqual({ title: 'Exit routes' });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Exit routes' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Exit routes' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('moves a lesson down and sends the whole order of lessons', async () => {
+    const calls = startServer();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Move lesson Exits down' }));
+    await waitFor(() => expect(lessonsInTree().map((item) => item.getAttribute('aria-label'))).toEqual(['Equipment', 'Exits']));
+    expect(calls.find((call) => call.key === 'PUT /api/courses/c1/lessons/order')?.body).toEqual({ ids: ['l2', 'l1'] });
+    expect(screen.getByRole('button', { name: 'Move lesson Equipment up' })).toBeDisabled();
+  });
+
+  it('moves a topic up inside its lesson and sends only that lesson\'s order', async () => {
+    const calls = startServer();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Move topic <b>Alarms</b> up' }));
+    await waitFor(() => expect(within(screen.getByRole('treeitem', { name: 'Exits' })).getAllByRole('treeitem').map((item) => item.getAttribute('aria-label'))).toEqual(['<b>Alarms</b>', 'Fire exits']));
+    expect(calls.find((call) => call.key === 'PUT /api/lessons/l1/topics/order')?.body).toEqual({ ids: ['t2', 't1'] });
+  });
+
+  it('says so and reloads when the order changed under you', async () => {
+    const calls = startServer({ 'PUT /api/courses/c1/lessons/order': { status: 409, body: { message: 'The list changed while you were editing it. Reload and try again.' } } });
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Move lesson Exits down' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The list changed');
+    await waitFor(() => expect(calls.filter((call) => call.key === 'GET /api/courses/c1')).toHaveLength(2));
+  });
+
+  describe('editing a topic', () => {
+    it('starts from the current text and sends only what changed', async () => {
+      const calls = startServer();
+      renderPage('/courses/c1?topic=t1');
+      await userEvent.click(await screen.findByRole('button', { name: 'Edit topic' }));
+      const dialog = screen.getByRole('dialog', { name: 'Edit topic' });
+      expect(within(dialog).getByLabelText('Topic title')).toHaveValue('Fire exits');
+      const text = within(dialog).getByLabelText('Description');
+      expect(text).toHaveValue('Keep them clear.\nNever lock them.');
+      await userEvent.clear(text);
+      await userEvent.type(text, '  New text ');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit topic' })).toBeNull());
+      expect(calls.find((call) => call.key === 'PATCH /api/topics/t1')?.body).toEqual({ description: 'New text' });
+      expect(await screen.findByText('New text')).toBeInTheDocument();
+    });
+
+    it('clears the text with an empty description and does not call the server for no change', async () => {
+      const calls = startServer();
+      renderPage('/courses/c1?topic=t1');
+      await userEvent.click(await screen.findByRole('button', { name: 'Edit topic' }));
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Edit topic' })).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit topic' })).toBeNull());
+      expect(calls.some((call) => call.key === 'PATCH /api/topics/t1')).toBe(false);
+      await userEvent.click(screen.getByRole('button', { name: 'Edit topic' }));
+      await userEvent.clear(screen.getByLabelText('Description'));
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Edit topic' })).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls.find((call) => call.key === 'PATCH /api/topics/t1')?.body).toEqual({ description: '' }));
+    });
+
+    it('asks for a title and shows what the server says about the text', async () => {
+      startServer({ 'PATCH /api/topics/t1': { status: 400, body: { message: 'Validation failed', fieldErrors: { description: ['Description must be 10,000 characters or fewer.'] } } } });
+      renderPage('/courses/c1?topic=t1');
+      await userEvent.click(await screen.findByRole('button', { name: 'Edit topic' }));
+      await userEvent.clear(screen.getByLabelText('Topic title'));
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(await screen.findByText('Enter a topic title.')).toBeInTheDocument();
+      await userEvent.type(screen.getByLabelText('Topic title'), 'Fire exits again');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(await screen.findByText('Description must be 10,000 characters or fewer.')).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: 'Edit topic' })).toBeInTheDocument();
     });
   });
 });

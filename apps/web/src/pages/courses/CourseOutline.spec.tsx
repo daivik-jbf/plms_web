@@ -18,10 +18,17 @@ const lessons: LessonNode[] = [
   { id: 'l3', title: '<b>Equipment</b>', position: 2, topics: [{ id: 't3', title: '<img src=x onerror=alert(1)>', position: 0, attachmentCount: 1 }] },
 ];
 
-function setup(selectedTopicId: string | null = null) {
-  const onSelectTopic = vi.fn();
-  const view = render(<CourseOutline lessons={lessons} selectedTopicId={selectedTopicId} onSelectTopic={onSelectTopic} />);
-  return { onSelectTopic, ...view };
+function setup(selectedTopicId: string | null = null, busy = false) {
+  const handlers = {
+    onSelectTopic: vi.fn(),
+    onAddTopic: vi.fn(),
+    onRenameLesson: vi.fn(),
+    onRenameTopic: vi.fn(),
+    onMoveLesson: vi.fn(),
+    onMoveTopic: vi.fn(),
+  };
+  const view = render(<CourseOutline lessons={lessons} selectedTopicId={selectedTopicId} busy={busy} {...handlers} />);
+  return { ...handlers, ...view };
 }
 
 const names = () => screen.getAllByRole('treeitem').map((item) => item.getAttribute('aria-label'));
@@ -156,5 +163,78 @@ describe('CourseOutline', () => {
       await userEvent.keyboard('{ArrowLeft}{ArrowDown}');
       expect(focused()).toBe('Empty lesson');
     });
+  });
+});
+
+describe('CourseOutline row actions', () => {
+  const row = (name: string) => within(screen.getByRole('treeitem', { name }));
+
+  it('gives a lesson Add topic, Rename and Move up and down, and a topic Rename and Move up and down, each named after its row', () => {
+    setup();
+    const lesson = row('Exits');
+    expect(lesson.getByRole('button', { name: 'Add a topic to Exits' })).toBeInTheDocument();
+    expect(lesson.getByRole('button', { name: 'Rename lesson Exits' })).toBeInTheDocument();
+    expect(lesson.getByRole('button', { name: 'Move lesson Exits up' })).toBeInTheDocument();
+    expect(lesson.getByRole('button', { name: 'Move lesson Exits down' })).toBeInTheDocument();
+    expect(lesson.getByRole('button', { name: 'Rename topic Fire exits' })).toBeInTheDocument();
+    expect(lesson.getByRole('button', { name: 'Move topic Fire exits up' })).toBeInTheDocument();
+    expect(lesson.getByRole('button', { name: 'Move topic Fire exits down' })).toBeInTheDocument();
+  });
+
+  it('disables the moves that are not possible at each level, and every move while a request runs', () => {
+    const { unmount } = setup();
+    expect(screen.getByRole('button', { name: 'Move lesson Exits up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move lesson Exits down' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move lesson <b>Equipment</b> down' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move topic Fire exits up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move topic Fire exits down' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move topic Alarms down' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move topic <img src=x onerror=alert(1)> up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move topic <img src=x onerror=alert(1)> down' })).toBeDisabled();
+    unmount();
+    setup(null, true);
+    for (const button of screen.getAllByRole('button', { name: /^Move / })) expect(button).toBeDisabled();
+  });
+
+  it('reports each action with the row it belongs to', async () => {
+    const handlers = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a topic to Exits' }));
+    expect(handlers.onAddTopic).toHaveBeenCalledWith(lessons[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Rename lesson Exits' }));
+    expect(handlers.onRenameLesson).toHaveBeenCalledWith(lessons[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Rename topic Alarms' }));
+    expect(handlers.onRenameTopic).toHaveBeenCalledWith(lessons[0]!.topics[1]);
+    await userEvent.click(screen.getByRole('button', { name: 'Move lesson Exits down' }));
+    expect(handlers.onMoveLesson).toHaveBeenCalledWith(lessons[0], 1);
+    await userEvent.click(screen.getByRole('button', { name: 'Move topic Alarms up' }));
+    expect(handlers.onMoveTopic).toHaveBeenCalledWith(lessons[0], lessons[0]!.topics[1], -1);
+  });
+
+  it('does not open, close or choose anything when an action is clicked', async () => {
+    const handlers = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Rename lesson Exits' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Rename topic Alarms' }));
+    expect(screen.getByRole('treeitem', { name: 'Exits' })).toHaveAttribute('aria-expanded', 'true');
+    expect(handlers.onSelectTopic).not.toHaveBeenCalled();
+  });
+
+  it('puts the buttons of the Tab stop in the tab order and the others out of it', async () => {
+    setup();
+    const tabbable = () => screen.getAllByRole('button').filter((button) => button.tabIndex === 0).map((button) => button.getAttribute('aria-label'));
+    expect(tabbable()).toEqual(['Add a topic to Exits', 'Rename lesson Exits', 'Move lesson Exits up', 'Move lesson Exits down']);
+    await userEvent.tab();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(tabbable()).toEqual(['Rename topic Fire exits', 'Move topic Fire exits up', 'Move topic Fire exits down']);
+  });
+
+  it('leaves the arrow keys to a button that has the focus', async () => {
+    setup();
+    await userEvent.tab();
+    await userEvent.tab();
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Add a topic to Exits');
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Add a topic to Exits');
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('treeitem', { name: 'Exits' })).toHaveAttribute('aria-expanded', 'true');
   });
 });

@@ -1,11 +1,19 @@
 import { type KeyboardEvent, useRef, useState } from 'react';
 import type { LessonNode, TopicSummary } from '../../api/courses';
+import { Button } from '../../components/Button';
 import styles from './Courses.module.css';
 
 interface CourseOutlineProps {
   lessons: LessonNode[];
   selectedTopicId: string | null;
+  // While a change is being sent the moves are off, so two cannot cross.
+  busy: boolean;
   onSelectTopic: (topicId: string) => void;
+  onAddTopic: (lesson: LessonNode) => void;
+  onRenameLesson: (lesson: LessonNode) => void;
+  onRenameTopic: (topic: TopicSummary) => void;
+  onMoveLesson: (lesson: LessonNode, delta: -1 | 1) => void;
+  onMoveTopic: (lesson: LessonNode, topic: TopicSummary, delta: -1 | 1) => void;
 }
 
 type Entry = { kind: 'lesson'; id: string; lesson: LessonNode } | { kind: 'topic'; id: string; lessonId: string };
@@ -22,8 +30,8 @@ function visibleEntries(lessons: LessonNode[], closed: ReadonlySet<string>): Ent
 }
 
 // An accessible tree (the WAI-ARIA tree pattern): one item is reachable with Tab, the arrow keys do the rest, and the
-// state of every lesson is announced through aria-expanded.
-export function CourseOutline({ lessons, selectedTopicId, onSelectTopic }: CourseOutlineProps) {
+// state of every lesson is announced through aria-expanded. The buttons of a row are reached with Tab from that row.
+export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, onAddTopic, onRenameLesson, onRenameTopic, onMoveLesson, onMoveTopic }: CourseOutlineProps) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [lastUsed, setLastUsed] = useState<string | null>(null);
   const elements = useRef(new Map<string, HTMLElement>());
@@ -105,8 +113,9 @@ export function CourseOutline({ lessons, selectedTopicId, onSelectTopic }: Cours
 
   return (
     <ul role="tree" aria-label="Course contents" className={styles.tree} onKeyDown={onKeyDown}>
-      {lessons.map((lesson) => {
+      {lessons.map((lesson, lessonIndex) => {
         const open = !closed.has(lesson.id);
+        const lessonTab = tabStop === lesson.id ? 0 : -1;
         return (
           <li
             key={lesson.id}
@@ -115,7 +124,7 @@ export function CourseOutline({ lessons, selectedTopicId, onSelectTopic }: Cours
             aria-expanded={open}
             aria-label={lesson.title}
             data-id={lesson.id}
-            tabIndex={tabStop === lesson.id ? 0 : -1}
+            tabIndex={lessonTab}
             ref={register(lesson.id)}
             onFocus={noteFocus(lesson.id)}
             className={styles.item}
@@ -125,33 +134,82 @@ export function CourseOutline({ lessons, selectedTopicId, onSelectTopic }: Cours
                 <span aria-hidden="true">{open ? '▾ ' : '▸ '}</span>
                 {lesson.title}
               </span>
+              <div className={styles.actions}>
+                <Button variant="secondary" size="small" tabIndex={lessonTab} aria-label={`Add a topic to ${lesson.title}`} onClick={() => onAddTopic(lesson)}>
+                  Add topic
+                </Button>
+                <Button variant="secondary" size="small" tabIndex={lessonTab} aria-label={`Rename lesson ${lesson.title}`} onClick={() => onRenameLesson(lesson)}>
+                  Rename
+                </Button>
+                <Button variant="secondary" size="small" tabIndex={lessonTab} disabled={busy || lessonIndex === 0} aria-label={`Move lesson ${lesson.title} up`} onClick={() => onMoveLesson(lesson, -1)}>
+                  ↑
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  tabIndex={lessonTab}
+                  disabled={busy || lessonIndex === lessons.length - 1}
+                  aria-label={`Move lesson ${lesson.title} down`}
+                  onClick={() => onMoveLesson(lesson, 1)}
+                >
+                  ↓
+                </Button>
+              </div>
             </div>
             {open ? (
               lesson.topics.length === 0 ? (
                 <p className={styles.hint}>No topics yet</p>
               ) : (
                 <ul role="group" className={styles.group}>
-                  {lesson.topics.map((topic) => (
-                    <li
-                      key={topic.id}
-                      role="treeitem"
-                      aria-level={2}
-                      aria-selected={topic.id === selectedTopicId}
-                      aria-label={topic.title}
-                      data-id={topic.id}
-                      tabIndex={tabStop === topic.id ? 0 : -1}
-                      ref={register(topic.id)}
-                      onFocus={noteFocus(topic.id)}
-                      className={topic.id === selectedTopicId ? `${styles.item} ${styles.selected}` : styles.item}
-                    >
-                      <div className={styles.row}>
-                        <span className={styles.label} onClick={() => onSelectTopic(topic.id)}>
-                          {topic.title}
-                        </span>
-                        <span className={styles.count}>{filesText(topic)}</span>
-                      </div>
-                    </li>
-                  ))}
+                  {lesson.topics.map((topic, topicIndex) => {
+                    const topicTab = tabStop === topic.id ? 0 : -1;
+                    return (
+                      <li
+                        key={topic.id}
+                        role="treeitem"
+                        aria-level={2}
+                        aria-selected={topic.id === selectedTopicId}
+                        aria-label={topic.title}
+                        data-id={topic.id}
+                        tabIndex={topicTab}
+                        ref={register(topic.id)}
+                        onFocus={noteFocus(topic.id)}
+                        className={topic.id === selectedTopicId ? `${styles.item} ${styles.selected}` : styles.item}
+                      >
+                        <div className={styles.row}>
+                          <span className={styles.label} onClick={() => onSelectTopic(topic.id)}>
+                            {topic.title}
+                          </span>
+                          <span className={styles.count}>{filesText(topic)}</span>
+                          <div className={styles.actions}>
+                            <Button variant="secondary" size="small" tabIndex={topicTab} aria-label={`Rename topic ${topic.title}`} onClick={() => onRenameTopic(topic)}>
+                              Rename
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="small"
+                              tabIndex={topicTab}
+                              disabled={busy || topicIndex === 0}
+                              aria-label={`Move topic ${topic.title} up`}
+                              onClick={() => onMoveTopic(lesson, topic, -1)}
+                            >
+                              ↑
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="small"
+                              tabIndex={topicTab}
+                              disabled={busy || topicIndex === lesson.topics.length - 1}
+                              aria-label={`Move topic ${topic.title} down`}
+                              onClick={() => onMoveTopic(lesson, topic, 1)}
+                            >
+                              ↓
+                            </Button>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )
             ) : null}

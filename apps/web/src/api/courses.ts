@@ -66,3 +66,21 @@ export const getCourse = (id: string): Promise<CourseTree> => api<CourseTree>(`/
 export const getTopic = (id: string): Promise<TopicView> => api<TopicView>(`/api/topics/${id}`);
 
 export const uploadCourseCover = (id: string, file: File): Promise<CourseTree> => uploadCoverTo<CourseTree>(`/api/courses/${id}`, file);
+
+
+export const addLesson = (courseId: string, title: string): Promise<CourseTree> =>
+  api<CourseTree>(`/api/courses/${courseId}/lessons`, { method: 'POST', body: { title } });
+
+export const renameLesson = (id: string, title: string): Promise<CourseTree> => api<CourseTree>(`/api/lessons/${id}`, { method: 'PATCH', body: { title } });
+
+export const reorderLessons = (courseId: string, ids: string[]): Promise<CourseTree> =>
+  api<CourseTree>(`/api/courses/${courseId}/lessons/order`, { method: 'PUT', body: { ids } });
+
+export const addTopic = (lessonId: string, title: string): Promise<CourseTree> =>
+  api<CourseTree>(`/api/lessons/${lessonId}/topics`, { method: 'POST', body: { title } });
+
+export const reorderTopics = (lessonId: string, ids: string[]): Promise<CourseTree> =>
+  api<CourseTree>(`/api/lessons/${lessonId}/topics/order`, { method: 'PUT', body: { ids } });
+
+export const updateTopic = (id: string, input: { title?: string; description?: string }): Promise<TopicView> =>
+  api<TopicView>(`/api/topics/${id}`, { method: 'PATCH', body: input });

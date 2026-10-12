@@ -1,6 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSession, STAFF } from '../test/session';
-import { createCourse, getCourse, getTopic, listCourses, reorderCourses, updateCourse, uploadCourseCover } from './courses';
+import {
+  addLesson,
+  addTopic,
+  createCourse,
+  getCourse,
+  getTopic,
+  listCourses,
+  renameLesson,
+  reorderCourses,
+  reorderLessons,
+  reorderTopics,
+  updateCourse,
+  updateTopic,
+  uploadCourseCover,
+} from './courses';
 
 describe('courses api', () => {
   beforeEach(() => vi.unstubAllGlobals());
@@ -51,5 +65,31 @@ describe('course page api', () => {
     const steps = calls.filter((call) => /cover|storage\.example/.test(call.key));
     expect(steps.map((call) => call.key)).toEqual(['POST /api/courses/c1/cover', 'PUT https://storage.example/put?sig=1', 'POST /api/courses/c1/cover/f1/complete']);
     expect(steps[1]!.headers).not.toHaveProperty('Authorization');
+  });
+});
+
+describe('lesson and topic api', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it('talks to the lesson and topic endpoints', async () => {
+    const calls: string[] = [];
+    mockSession(STAFF, (url, init) => {
+      calls.push(`${init.method ?? 'GET'} ${url} ${typeof init.body === 'string' ? init.body : ''}`.trim());
+      return { body: {} };
+    });
+    await addLesson('c1', 'Exits');
+    await renameLesson('l1', 'Exit routes');
+    await reorderLessons('c1', ['l2', 'l1']);
+    await addTopic('l1', 'Fire exits');
+    await reorderTopics('l1', ['t2', 't1']);
+    await updateTopic('t1', { description: 'Words' });
+    expect(calls.filter((call) => /\/api\/(courses|lessons|topics)\//.test(call))).toEqual([
+      'POST /api/courses/c1/lessons {"title":"Exits"}',
+      'PATCH /api/lessons/l1 {"title":"Exit routes"}',
+      'PUT /api/courses/c1/lessons/order {"ids":["l2","l1"]}',
+      'POST /api/lessons/l1/topics {"title":"Fire exits"}',
+      'PUT /api/lessons/l1/topics/order {"ids":["t2","t1"]}',
+      'PATCH /api/topics/t1 {"description":"Words"}',
+    ]);
   });
 });
