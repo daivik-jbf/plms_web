@@ -145,6 +145,7 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
     setNotice(null);
     try {
       setTopic({ ...topic, attachments: await reorderAttachments(topic.id, ids) });
+      setNotice({ tone: 'success', text: `Moved "${attachment.title}" ${delta === -1 ? 'up' : 'down'}.` });
     } catch (error) {
       setNotice({ tone: 'error', text: describeError(error) });
       await load();

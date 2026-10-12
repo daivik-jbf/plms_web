@@ -363,6 +363,7 @@ describe('TopicPanel attachments', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Move Exit map down' }));
       await waitFor(() => expect(screen.getByRole('button', { name: 'Move Exit map up' })).not.toHaveAttribute('aria-disabled'));
       expect(calls.find((call) => call.key === 'PUT /api/topics/t1/attachments/order')?.body).toEqual({ ids: ['a2', 'a1'] });
+      expect(screen.getByRole('status')).toHaveTextContent('Moved "Exit map" down.');
       const rows = within(screen.getByRole('table', { name: 'Attachments' })).getAllByRole('row').slice(1);
       expect(rows[0]).toHaveTextContent('Safety briefing');
       expect(rows[2]).toHaveTextContent('Unfinished');

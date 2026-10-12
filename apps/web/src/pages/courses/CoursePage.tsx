@@ -99,11 +99,12 @@ function Course({ courseId }: { courseId: string }) {
   const lessonOfTopic = tree.lessons.find((lesson) => lesson.topics.some((topic) => topic.id === topicId));
 
   // Every change answers with the whole tree. A change that fails is explained, and the tree is read again in case it moved on.
-  async function move(change: () => Promise<CourseTree>) {
+  async function move(what: string, delta: -1 | 1, change: () => Promise<CourseTree>) {
     setBusy(true);
     setNotice(null);
     try {
       setTree(await change());
+      setNotice({ tone: 'success', text: `Moved ${what} ${delta === -1 ? 'up' : 'down'}.` });
     } catch (error) {
       setNotice({ tone: 'error', text: describeError(error) });
       await load();
@@ -190,7 +191,7 @@ function Course({ courseId }: { courseId: string }) {
               onRenameLesson={(lesson) => setTitleMode({ kind: 'rename-lesson', lesson })}
               onRenameTopic={(topic) => setTitleMode({ kind: 'rename-topic', topic })}
               onMoveLesson={(lesson, delta) =>
-                void move(() =>
+                void move(`lesson "${lesson.title}"`, delta, () =>
                   reorderLessons(
                     tree.id,
                     swapped(
@@ -202,7 +203,7 @@ function Course({ courseId }: { courseId: string }) {
                 )
               }
               onMoveTopic={(lesson, topic, delta) =>
-                void move(() =>
+                void move(`topic "${topic.title}"`, delta, () =>
                   reorderTopics(
                     lesson.id,
                     swapped(

@@ -177,6 +177,7 @@ describe('CoursesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Move Fire safety down' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Move Fire safety up' })).not.toHaveAttribute('aria-disabled'));
     expect(calls.find((call) => call.key === 'PUT /api/courses/order')?.body).toEqual({ ids: ['c2', 'c1', 'c3'] });
+    expect(screen.getByRole('status')).toHaveTextContent('Moved "Fire safety" down.');
     const rows = within(screen.getByRole('table', { name: 'Courses' })).getAllByRole('row').slice(1);
     expect(within(rows[0] as HTMLElement).getByRole('link', { name: 'Open First aid' })).toBeInTheDocument();
   });

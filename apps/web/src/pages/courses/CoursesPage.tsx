@@ -39,11 +39,13 @@ export function CoursesPage() {
     if (!courses) return;
     const ids = courses.map((course) => course.id);
     const target = index + delta;
+    const moved = courses[index]?.title ?? '';
     [ids[index], ids[target]] = [ids[target] as string, ids[index] as string];
     setBusy(true);
     setNotice(null);
     try {
       setCourses(await reorderCourses(ids));
+      setNotice({ tone: 'success', text: `Moved "${moved}" ${delta === -1 ? 'up' : 'down'}.` });
     } catch (error) {
       setNotice({ tone: 'error', text: describeError(error) });
       await load();

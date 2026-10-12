@@ -458,6 +458,7 @@ describe('CoursePage: building the course', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Move lesson Exits down' }));
     await waitFor(() => expect(lessonsInTree().map((item) => item.getAttribute('aria-label'))).toEqual(['Equipment', 'Exits']));
     expect(calls.find((call) => call.key === 'PUT /api/courses/c1/lessons/order')?.body).toEqual({ ids: ['l2', 'l1'] });
+    expect(screen.getByRole('status')).toHaveTextContent('Moved lesson "Exits" down.');
     expect(screen.getByRole('button', { name: 'Move lesson Equipment up' })).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -467,6 +468,7 @@ describe('CoursePage: building the course', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Move topic <b>Alarms</b> up' }));
     await waitFor(() => expect(within(screen.getByRole('treeitem', { name: 'Exits' })).getAllByRole('treeitem').map((item) => item.getAttribute('aria-label'))).toEqual(['<b>Alarms</b>', 'Fire exits']));
     expect(calls.find((call) => call.key === 'PUT /api/lessons/l1/topics/order')?.body).toEqual({ ids: ['t2', 't1'] });
+    expect(screen.getByRole('status')).toHaveTextContent('Moved topic "<b>Alarms</b>" up.');
   });
 
   it('says so and reloads when the order changed under you', async () => {
