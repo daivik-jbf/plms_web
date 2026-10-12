@@ -7,8 +7,13 @@ import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
 import { CATEGORIES } from '../../media/categories';
 import { usePlayer } from '../../player/PlayerContext';
+import { ATTACHMENT_ACCEPT } from '../../uploads/limits';
+import { useUploads } from '../../uploads/UploadsContext';
+import { PendingUploads } from '../media/PendingUploads';
 import { PlayerDialog, type VideoTarget } from '../media/PlayerDialog';
+import { AddAttachmentDialog } from './AddAttachmentDialog';
 import { AttachmentList } from './AttachmentList';
+import { AttachmentUploadDialog } from './AttachmentUploadDialog';
 import styles from './Courses.module.css';
 import { EditTopicDialog } from './EditTopicDialog';
 import { ImageDialog } from './ImageDialog';
@@ -31,13 +36,16 @@ interface TopicPanelProps {
 // The chosen topic: its title, text and attachments. The page keys this component by topic, so choosing another one starts afresh.
 export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onChanged }: TopicPanelProps) {
   const player = usePlayer();
+  const uploads = useUploads();
   const [topic, setTopic] = useState<TopicDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [renaming, setRenaming] = useState<Attachment | null>(null);
   const [video, setVideo] = useState<VideoTarget | null>(null);
   const [image, setImage] = useState<Attachment | null>(null);
@@ -52,9 +60,10 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
     }
   }, [topicId]);
 
+  // An upload that finished (or was cancelled) changes what the topic holds.
   useEffect(() => {
     void load();
-  }, [load, reloadKey]);
+  }, [load, reloadKey, uploads.finishedCount]);
 
   if (missing) return <EmptyState title="Topic not found">It may have been moved. Choose another topic in the list.</EmptyState>;
   if (loadError) {
@@ -74,6 +83,13 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
     );
   }
   if (!topic) return <Skeleton rows={3} />;
+
+  // Percent sent of the uploads of this topic that are running in this browser.
+  const progress = Object.fromEntries(
+    uploads.jobs
+      .filter((job) => job.topicId === topicId && job.status === 'sending' && job.sizeBytes > 0)
+      .map((job) => [job.itemId, Math.floor((100 * job.bytesSent) / job.sizeBytes)]),
+  );
 
   // The line under a track in the docked player.
   function placeOf(attachment: Attachment): string {
@@ -149,21 +165,60 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
 
       <div className={styles.sectionHeader}>
         <h3>Attachments</h3>
-        <Button size="small" onClick={() => setPicking(true)}>
-          Add from the library
+        <Button size="small" onClick={() => setChoosing(true)}>
+          Add
         </Button>
       </div>
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
       {topic.attachments.length === 0 ? (
-        <EmptyState title="No attachments yet">Add a file from the library to show it in this topic.</EmptyState>
+        <EmptyState title="No attachments yet">Upload a file, or add one from the library, to show it in this topic.</EmptyState>
       ) : (
-        <AttachmentList attachments={topic.attachments} busy={busy} onOpen={open} onRename={setRenaming} onMove={(attachment, delta) => void move(attachment, delta)} />
+        <AttachmentList
+          attachments={topic.attachments}
+          busy={busy}
+          progress={progress}
+          onOpen={open}
+          onRename={setRenaming}
+          onMove={(attachment, delta) => void move(attachment, delta)}
+        />
       )}
+      <PendingUploads
+        belongs={(entry) => entry.topicId === topicId}
+        accept={ATTACHMENT_ACCEPT}
+        noun="attachment"
+        nounTitle="Attachment"
+        reloadKey={uploads.finishedCount}
+        onChanged={() => {
+          void load();
+          onChanged();
+        }}
+      />
 
       <EditTopicDialog
         topic={editing ? topic : null}
         onClose={() => setEditing(false)}
         onSaved={() => {
+          void load();
+          onChanged();
+        }}
+      />
+      <AddAttachmentDialog
+        open={choosing}
+        onClose={() => setChoosing(false)}
+        onUpload={() => {
+          setChoosing(false);
+          setUploading(true);
+        }}
+        onLibrary={() => {
+          setChoosing(false);
+          setPicking(true);
+        }}
+      />
+      <AttachmentUploadDialog
+        open={uploading}
+        topicId={topic.id}
+        onClose={() => setUploading(false)}
+        onStarted={() => {
           void load();
           onChanged();
         }}

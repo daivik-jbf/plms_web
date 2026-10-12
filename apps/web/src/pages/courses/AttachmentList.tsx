@@ -9,6 +9,8 @@ import media from '../media/Media.module.css';
 interface AttachmentListProps {
   attachments: Attachment[];
   busy: boolean;
+  // Percent sent for attachments being uploaded from this browser right now, by attachment id.
+  progress: Record<string, number>;
   onOpen: (attachment: Attachment) => void;
   onRename: (attachment: Attachment) => void;
   onMove: (attachment: Attachment, delta: -1 | 1) => void;
@@ -24,7 +26,7 @@ function sourceText(attachment: Attachment): string | null {
   return `From ${category?.label ?? 'the library'} › ${attachment.libraryFolderName ?? ''}`;
 }
 
-export function AttachmentList({ attachments, busy, onOpen, onRename, onMove }: AttachmentListProps) {
+export function AttachmentList({ attachments, busy, progress, onOpen, onRename, onMove }: AttachmentListProps) {
   // Only ready attachments can be ordered; one that is still uploading keeps its place until it finishes.
   const ready = attachments.filter((attachment) => attachment.status === 'ready');
 
@@ -44,6 +46,7 @@ export function AttachmentList({ attachments, busy, onOpen, onRename, onMove }: 
           const isReady = attachment.status === 'ready';
           const readyIndex = ready.indexOf(attachment);
           const source = sourceText(attachment);
+          const percent = progress[attachment.id];
           return (
             <tr key={attachment.id}>
               <td data-label="Attachment">
@@ -58,7 +61,7 @@ export function AttachmentList({ attachments, busy, onOpen, onRename, onMove }: 
                   <div>
                     <span className={media.name}>{attachment.title}</span>
                     {source ? <span className={media.muted}>{source}</span> : null}
-                    {isReady ? null : <Badge tone="change">Uploading</Badge>}
+                    {isReady ? null : <Badge tone="change">{percent === undefined ? 'Uploading' : `Uploading ${percent}%`}</Badge>}
                   </div>
                 </div>
               </td>

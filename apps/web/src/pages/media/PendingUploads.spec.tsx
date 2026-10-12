@@ -4,15 +4,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PendingUpload } from '../../api/media';
 import { type CategoryConfig, CATEGORIES } from '../../media/categories';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
+import { MEDIA_KINDS } from '../../uploads/limits';
 import { FileMismatchError, type UploadJob, UploadsContext, UploadsProvider, type UploadsValue } from '../../uploads/UploadsContext';
 import { PendingUploads } from './PendingUploads';
 
 const VIDEOS = CATEGORIES.find((entry) => entry.slug === 'videos')!;
 const SONGS = CATEGORIES.find((entry) => entry.slug === 'songs')!;
 
+// What a folder page tells the list: which uploads are the folder's, which files to ask for and the words of the category.
+const forFolder = (category: CategoryConfig, folderId: string) => ({
+  belongs: (entry: PendingUpload) => entry.folderId === folderId,
+  accept: MEDIA_KINDS[category.kind].accept,
+  noun: category.noun,
+  nounTitle: category.nounTitle,
+});
+
 const pending = (overrides: Partial<PendingUpload> & { fileId: string }): PendingUpload => ({
   itemId: `item-${overrides.fileId}`,
   folderId: 'f1',
+  topicId: null,
   title: 'Fire exits',
   fileName: 'fire.mp4',
   sizeBytes: 412 * 1024 ** 2,
@@ -26,7 +36,7 @@ function setup(list: PendingUpload[], jobs: UploadJob[] = [], overrides: Partial
   const onChanged = vi.fn();
   const view = renderWithSession(
     <UploadsContext.Provider value={value}>
-      <PendingUploads category={category} folderId="f1" reloadKey={0} onChanged={onChanged} />
+      <PendingUploads {...forFolder(category, 'f1')} reloadKey={0} onChanged={onChanged} />
     </UploadsContext.Provider>,
   );
   return { value, onChanged, view, fetchMock };
@@ -49,7 +59,7 @@ describe('PendingUploads', () => {
   });
 
   it('does not list uploads that are running in this browser right now', async () => {
-    const running: UploadJob = { id: 'a', itemId: 'item-a', folderId: 'f1', title: 'Mine here', fileName: 'fire.mp4', sizeBytes: 5, bytesSent: 1, status: 'sending', message: null, coverWarning: false };
+    const running: UploadJob = { id: 'a', itemId: 'item-a', folderId: 'f1', topicId: null, title: 'Mine here', fileName: 'fire.mp4', sizeBytes: 5, bytesSent: 1, status: 'sending', message: null, coverWarning: false };
     setup([pending({ fileId: 'a', title: 'Mine here' }), pending({ fileId: 'c', title: 'Stopped by a reload' })], [running]);
     expect(await screen.findByText('Stopped by a reload')).toBeInTheDocument();
     expect(screen.queryByText('Mine here')).toBeNull();
@@ -114,7 +124,7 @@ describe('PendingUploads', () => {
     const onChanged = vi.fn();
     renderWithSession(
       <UploadsProvider>
-        <PendingUploads category={VIDEOS} folderId="f1" reloadKey={0} onChanged={onChanged} />
+        <PendingUploads {...forFolder(VIDEOS, 'f1')} reloadKey={0} onChanged={onChanged} />
       </UploadsProvider>,
     );
     await userEvent.click(await screen.findByRole('button', { name: 'Cancel upload of Fire exits' }));

@@ -14,6 +14,7 @@ import {
   renameFolder,
   reorderFolders,
   reorderItems,
+  startAttachmentUpload,
   startUpload,
   updateItem,
   uploadCover,
@@ -88,6 +89,13 @@ describe('media api', () => {
     ]);
     expect(calls[1]?.body).toEqual({ title: 'New' });
     expect(calls[2]?.body).toEqual({ ids: ['v2', 'v1'] });
+  });
+
+  it('starts an upload into a topic', async () => {
+    const calls = record();
+    await startAttachmentUpload('t1', { title: 'Exit map', fileName: 'map.pdf', contentType: 'application/pdf', sizeBytes: 5, durationSeconds: null });
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/topics/t1/attachments/uploads']);
+    expect(calls[0]?.body).toEqual({ title: 'Exit map', fileName: 'map.pdf', contentType: 'application/pdf', sizeBytes: 5, durationSeconds: null });
   });
 
   it('talks to the upload endpoints', async () => {

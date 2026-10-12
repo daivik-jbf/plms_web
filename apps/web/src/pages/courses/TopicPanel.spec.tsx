@@ -1,12 +1,14 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StrictMode } from 'react';
+import { type ReactNode, StrictMode, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Attachment, TopicDetail } from '../../api/courses';
-import type { Folder, MediaItem } from '../../api/media';
+import type { Folder, MediaItem, PendingUpload } from '../../api/media';
 import { PlayerContext, type PlayerValue } from '../../player/PlayerContext';
+import { type UploadJob, UploadsContext, type UploadsValue } from '../../uploads/UploadsContext';
 import type { MockResponse } from '../../test/fetch-mock';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
+import { ATTACHMENT_ACCEPT } from '../../uploads/limits';
 import { TopicPanel } from './TopicPanel';
 
 const attachment = (overrides: Partial<Attachment> & { id: string; title: string }): Attachment => ({
@@ -93,6 +95,7 @@ function startServer(initial: TopicDetail = topic(fixture), overrides: Record<st
     const override = overrides[key];
     if (override) return typeof override === 'function' ? override(body) : override;
     if (key === 'GET /api/topics/t1') return { body: state.topic };
+    if (key === 'GET /api/media/uploads/mine') return { body: [] };
     if (key === 'GET /api/media/videos/folders') return { body: folders };
     if (key === 'GET /api/media/songs/folders') return { body: songFolders };
     const folderItems = /^GET \/api\/media\/folders\/([^/]+)\/items$/.exec(key);
@@ -126,15 +129,38 @@ function startServer(initial: TopicDetail = topic(fixture), overrides: Record<st
 
 const fakePlayer = (): PlayerValue => ({ session: null, play: vi.fn(), close: vi.fn() });
 
-function renderPanel(options: { player?: PlayerValue; strict?: boolean; onChanged?: () => void } = {}) {
-  const { player = fakePlayer(), strict = false, onChanged = vi.fn() } = options;
+const fakeUploads = (overrides: Partial<UploadsValue> = {}): UploadsValue => ({
+  jobs: [],
+  finishedCount: 0,
+  start: vi.fn(async () => undefined),
+  resume: vi.fn(async () => undefined),
+  retry: vi.fn(async () => undefined),
+  cancel: vi.fn(async () => undefined),
+  dismiss: vi.fn(),
+  ...overrides,
+});
+
+let setUploads: (value: UploadsValue) => void = () => undefined;
+
+function Providers({ initial, player, children }: { initial: UploadsValue; player: PlayerValue; children: ReactNode }) {
+  const [value, setValue] = useState(initial);
+  setUploads = setValue;
+  return (
+    <UploadsContext.Provider value={value}>
+      <PlayerContext.Provider value={player}>{children}</PlayerContext.Provider>
+    </UploadsContext.Provider>
+  );
+}
+
+function renderPanel(options: { player?: PlayerValue; uploads?: UploadsValue; strict?: boolean; onChanged?: () => void } = {}) {
+  const { player = fakePlayer(), uploads = fakeUploads(), strict = false, onChanged = vi.fn() } = options;
   const panel = (
-    <PlayerContext.Provider value={player}>
+    <Providers initial={uploads} player={player}>
       <TopicPanel topicId="t1" courseTitle="Fire safety" lessonTitle="Exits" reloadKey={0} onChanged={onChanged} />
-    </PlayerContext.Provider>
+    </Providers>
   );
   renderWithSession(strict ? <StrictMode>{panel}</StrictMode> : panel);
-  return { player, onChanged };
+  return { player, uploads, onChanged };
 }
 
 const row = (name: RegExp | string) => screen.getByRole('row', { name });
@@ -191,7 +217,7 @@ describe('TopicPanel attachments', () => {
     startServer(topic([]));
     renderPanel();
     expect(await screen.findByText('No attachments yet')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add from the library' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument();
   });
 
   it('shows an attachment that is still uploading with a badge and no actions', async () => {
@@ -353,7 +379,8 @@ describe('TopicPanel attachments', () => {
 
   describe('adding from the library', () => {
     const openPicker = async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Add from the library' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+      await userEvent.click(within(await screen.findByRole('dialog', { name: 'Add an attachment' })).getByRole('button', { name: 'From the library' }));
       return screen.findByRole('dialog', { name: 'Add from the library' });
     };
 
@@ -447,6 +474,121 @@ describe('TopicPanel attachments', () => {
       expect(within(dialog).getByLabelText('Category')).toHaveValue('songs');
       expect(within(dialog).getByLabelText('Folder')).toHaveValue('sf1');
       expect(within(dialog).queryByText('Fire exits film')).toBeNull();
+    });
+  });
+});
+
+describe('TopicPanel uploads', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const uploadJob = (overrides: Partial<UploadJob> = {}): UploadJob => ({
+    id: 'u9',
+    itemId: 'a9',
+    folderId: null,
+    topicId: 't1',
+    title: 'Half a map',
+    fileName: 'map.pdf',
+    sizeBytes: 200,
+    bytesSent: 50,
+    status: 'sending',
+    message: null,
+    coverWarning: false,
+    ...overrides,
+  });
+
+  it('offers to upload a file or to pick one from the library', async () => {
+    startServer(topic([]));
+    renderPanel();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add an attachment' });
+    expect(within(dialog).getByRole('button', { name: 'Upload a file' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'From the library' })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload a file' }));
+    expect(screen.queryByRole('dialog', { name: 'Add an attachment' })).toBeNull();
+    expect(await screen.findByRole('dialog', { name: 'Upload a file' })).toBeInTheDocument();
+  });
+
+  it('starts the upload into this topic through the upload manager, and reloads the topic', async () => {
+    const calls = startServer(topic([]));
+    const { uploads, onChanged } = renderPanel();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Upload a file' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Upload a file' });
+    const file = new File([new Uint8Array(10)], 'Exit map.pdf', { type: 'application/pdf' });
+    await userEvent.upload(within(dialog).getByLabelText(/^File/), file);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    await waitFor(() => expect(uploads.start).toHaveBeenCalledWith({ file, topicId: 't1', contentType: 'application/pdf', title: 'Exit map', durationSeconds: null }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Upload a file' })).toBeNull());
+    await waitFor(() => expect(calls.filter((call) => call.key === 'GET /api/topics/t1')).toHaveLength(2));
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('shows how far an upload of this topic has got, and ignores jobs of other topics and folders', async () => {
+    startServer(topic([attachment({ id: 'a1', title: 'Exit map' }), attachment({ id: 'a9', title: 'Half a map', status: 'uploading', position: 1 })]));
+    renderPanel({ uploads: fakeUploads({ jobs: [uploadJob(), uploadJob({ id: 'u8', itemId: 'a1', topicId: 't2', bytesSent: 100 })] }) });
+    const unfinished = await screen.findByRole('row', { name: /Half a map/ });
+    expect(within(unfinished).getByText('Uploading 25%')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Exit map/ })).queryByText(/Uploading/)).toBeNull();
+  });
+
+  it('reloads the topic when an upload finishes', async () => {
+    const calls = startServer(topic([]));
+    renderPanel();
+    await screen.findByText('No attachments yet');
+    expect(calls.filter((call) => call.key === 'GET /api/topics/t1')).toHaveLength(1);
+    act(() => setUploads(fakeUploads({ finishedCount: 1 })));
+    await waitFor(() => expect(calls.filter((call) => call.key === 'GET /api/topics/t1')).toHaveLength(2));
+  });
+
+  describe('the list of unfinished uploads', () => {
+    const entry = (overrides: Partial<PendingUpload> & { fileId: string }): PendingUpload => ({
+      itemId: `a-${overrides.fileId}`,
+      folderId: null,
+      topicId: 't1',
+      title: 'Half a map',
+      fileName: 'map.pdf',
+      sizeBytes: 1024,
+      createdAt: '2026-10-09T10:00:00Z',
+      ...overrides,
+    });
+
+    it('lists the unfinished uploads of this topic only, in the words of attachments', async () => {
+      startServer(topic([]), {
+        'GET /api/media/uploads/mine': {
+          body: [entry({ fileId: 'u1' }), entry({ fileId: 'u2', title: 'Other topic', topicId: 't2' }), entry({ fileId: 'u3', title: 'A library video', topicId: null, folderId: 'f1' })],
+        },
+      });
+      renderPanel();
+      const table = await screen.findByRole('table', { name: 'Unfinished uploads' });
+      expect(within(table).getByText('Half a map')).toBeInTheDocument();
+      expect(within(table).queryByText('Other topic')).toBeNull();
+      expect(within(table).queryByText('A library video')).toBeNull();
+      expect(within(table).getByRole('columnheader', { name: 'Attachment' })).toBeInTheDocument();
+    });
+
+    it('resumes with the same file, asking for any allowed type', async () => {
+      startServer(topic([]), { 'GET /api/media/uploads/mine': { body: [entry({ fileId: 'u1' })] } });
+      const { uploads } = renderPanel();
+      await screen.findByRole('table', { name: 'Unfinished uploads' });
+      await userEvent.click(screen.getByRole('button', { name: 'Resume Half a map' }));
+      const input = document.querySelector('input[type="file"][hidden]') as HTMLInputElement;
+      expect(input).toHaveAttribute('accept', ATTACHMENT_ACCEPT);
+      const file = new File([new Uint8Array(3)], 'map.pdf', { type: 'application/pdf' });
+      await userEvent.upload(input, file);
+      await waitFor(() => expect(uploads.resume).toHaveBeenCalledWith(expect.objectContaining({ fileId: 'u1', topicId: 't1' }), file));
+    });
+
+    it('cancels an unfinished upload after a confirmation that speaks of attachments', async () => {
+      startServer(topic([]), { 'GET /api/media/uploads/mine': { body: [entry({ fileId: 'u1' })] } });
+      const { uploads } = renderPanel();
+      await userEvent.click(await screen.findByRole('button', { name: 'Cancel upload of Half a map' }));
+      const dialog = screen.getByRole('dialog', { name: 'Cancel this upload?' });
+      expect(dialog).toHaveTextContent('You can upload the attachment again later.');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel upload' }));
+      await waitFor(() => expect(uploads.cancel).toHaveBeenCalledWith('u1'));
     });
   });
 });

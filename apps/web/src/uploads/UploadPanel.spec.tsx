@@ -8,6 +8,7 @@ const job = (overrides: Partial<UploadJob> = {}): UploadJob => ({
   id: 'u1',
   itemId: 'v1',
   folderId: 'f1',
+  topicId: null,
   title: 'Fire exits',
   fileName: 'fire-exits.mp4',
   sizeBytes: 2 * 1024 ** 3,

@@ -67,6 +67,31 @@ describe('UploadsProvider', () => {
     });
   });
 
+  it('starts an upload into a topic: the same pieces and completion, a different start, and no folder', async () => {
+    const calls = startServer({ 'POST /api/topics/t1/attachments/uploads': { status: 201, body: started } });
+    setup();
+    await act(() => value.start({ file, topicId: 't1', contentType: 'video/mp4', title: 'Fire film', durationSeconds: 12 }));
+    expect(calls.find((call) => call.key === 'POST /api/topics/t1/attachments/uploads')?.body).toEqual({
+      title: 'Fire film',
+      fileName: 'clip.mp4',
+      contentType: 'video/mp4',
+      sizeBytes: 10,
+      durationSeconds: 12,
+    });
+    expect(await screen.findByText('Fire film:done:10:false:')).toBeInTheDocument();
+    expect(calls.some((call) => call.key === 'POST /api/media/uploads')).toBe(false);
+    expect(calls.some((call) => call.key === 'POST /api/media/uploads/u1/complete')).toBe(true);
+    expect(value.jobs[0]).toMatchObject({ id: 'u1', itemId: 'v1', folderId: null, topicId: 't1' });
+    expect(screen.getByText('finished:1')).toBeInTheDocument();
+  });
+
+  it('keeps the topic of a refused start out of the list of jobs', async () => {
+    startServer({ 'POST /api/topics/t1/attachments/uploads': { status: 400, body: { message: 'Validation failed', fieldErrors: { contentType: ['Attachments can be MP4 videos.'] } } } });
+    setup();
+    await expect(act(() => value.start({ file, topicId: 't1', contentType: 'video/mp4', title: 'Fire film', durationSeconds: null }))).rejects.toMatchObject({ status: 400 });
+    expect(value.jobs).toEqual([]);
+  });
+
   it('starts an upload, sends every piece with a fresh link, completes with the receipts and reports it finished', async () => {
     const calls = startServer();
     setup();
@@ -173,7 +198,18 @@ describe('UploadsProvider', () => {
   });
 
   describe('resuming', () => {
-    const pending: PendingUpload = { fileId: 'u1', itemId: 'v1', folderId: 'f1', title: 'Fire exits', fileName: 'clip.mp4', sizeBytes: 10, createdAt: '2026-10-08T10:00:00Z' };
+    const pending: PendingUpload = { fileId: 'u1', itemId: 'v1', folderId: 'f1', topicId: null, title: 'Fire exits', fileName: 'clip.mp4', sizeBytes: 10, createdAt: '2026-10-08T10:00:00Z' };
+
+    it('resumes an attachment upload from what the server holds, in its topic', async () => {
+      const calls = startServer({
+        'GET /api/media/uploads/u1': { body: { fileId: 'u1', itemId: 'v1', status: 'pending', partSize: 4, partCount: 3, uploadedParts: [] } },
+      });
+      setup();
+      await act(() => value.resume({ ...pending, folderId: null, topicId: 't1' }, new File([new Uint8Array(10)], 'clip.mp4', { type: 'video/mp4' })));
+      expect(await screen.findByText('Fire exits:done:10:false:')).toBeInTheDocument();
+      expect(value.jobs[0]).toMatchObject({ folderId: null, topicId: 't1' });
+      expect(calls.some((call) => call.key === 'POST /api/media/uploads/u1/complete')).toBe(true);
+    });
 
     it('refuses a different file and says which one is needed', async () => {
       startServer();

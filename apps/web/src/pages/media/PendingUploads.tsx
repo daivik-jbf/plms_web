@@ -6,14 +6,16 @@ import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Table } from '../../components/Table';
 import { formatBytes, formatDateTime } from '../../lib/format';
-import type { CategoryConfig } from '../../media/categories';
-import { MEDIA_KINDS } from '../../uploads/limits';
 import { FileMismatchError, useUploads } from '../../uploads/UploadsContext';
 import styles from './Media.module.css';
 
 interface PendingUploadsProps {
-  category: CategoryConfig;
-  folderId: string;
+  // Which of the person's unfinished uploads are listed here (a folder's, or a topic's), which files to ask for when one is
+  // resumed, and the words to use: "song" in a sentence, "Song" over the first column.
+  belongs: (entry: PendingUpload) => boolean;
+  accept: string;
+  noun: string;
+  nounTitle: string;
   // Changes whenever the list may be out of date (an upload started or finished).
   reloadKey: number;
   onChanged: () => void;
@@ -21,7 +23,7 @@ interface PendingUploadsProps {
 
 // Uploads that were interrupted (for example by closing the tab): the person can continue with the same file,
 // from the pieces the server already holds, or abandon them.
-export function PendingUploads({ category, folderId, reloadKey, onChanged }: PendingUploadsProps) {
+export function PendingUploads({ belongs, accept, noun, nounTitle, reloadKey, onChanged }: PendingUploadsProps) {
   const uploads = useUploads();
   const [list, setList] = useState<PendingUpload[]>([]);
   const [target, setTarget] = useState<PendingUpload | null>(null);
@@ -43,7 +45,7 @@ export function PendingUploads({ category, folderId, reloadKey, onChanged }: Pen
   }, [load, reloadKey, uploads.jobs.length]);
 
   const running = new Set(uploads.jobs.map((job) => job.id));
-  const shown = list.filter((entry) => entry.folderId === folderId && !running.has(entry.fileId));
+  const shown = list.filter((entry) => belongs(entry) && !running.has(entry.fileId));
 
   async function onFileChosen(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -82,12 +84,12 @@ export function PendingUploads({ category, folderId, reloadKey, onChanged }: Pen
     <section aria-label="Unfinished uploads">
       <h2>Unfinished uploads</h2>
       {error ? <Alert tone="error">{error}</Alert> : null}
-      <input ref={inputRef} type="file" accept={MEDIA_KINDS[category.kind].accept} hidden tabIndex={-1} onChange={(event) => void onFileChosen(event)} />
+      <input ref={inputRef} type="file" accept={accept} hidden tabIndex={-1} onChange={(event) => void onFileChosen(event)} />
       {shown.length > 0 ? (
         <Table caption="Unfinished uploads">
           <thead>
             <tr>
-              <th scope="col">{category.nounTitle}</th>
+              <th scope="col">{nounTitle}</th>
               <th scope="col">Size</th>
               <th scope="col">Started</th>
               <th scope="col">Actions</th>
@@ -96,7 +98,7 @@ export function PendingUploads({ category, folderId, reloadKey, onChanged }: Pen
           <tbody>
             {shown.map((entry) => (
               <tr key={entry.fileId}>
-                <td data-label={category.nounTitle}>
+                <td data-label={nounTitle}>
                   <span className={styles.name}>{entry.title}</span>
                   <span className={styles.muted}>{entry.fileName}</span>
                 </td>
@@ -134,7 +136,7 @@ export function PendingUploads({ category, folderId, reloadKey, onChanged }: Pen
         onCancel={() => setCancelling(null)}
         onConfirm={() => void confirmCancel()}
       >
-        {cancelling ? `What was already sent of "${cancelling.title}" will be discarded. You can upload the ${category.noun} again later.` : ''}
+        {cancelling ? `What was already sent of "${cancelling.title}" will be discarded. You can upload the ${noun} again later.` : ''}
       </ConfirmDialog>
     </section>
   );

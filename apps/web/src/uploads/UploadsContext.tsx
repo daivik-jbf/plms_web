@@ -5,6 +5,7 @@ import {
   completeUpload,
   getUploadStatus,
   type PendingUpload,
+  startAttachmentUpload,
   startUpload,
   type UploadStatus as ServerUploadStatus,
   uploadCover,
@@ -20,7 +21,9 @@ export type UploadStatus = 'sending' | 'finishing' | 'done' | 'failed';
 export interface UploadJob {
   id: string;
   itemId: string;
-  folderId: string;
+  // A library upload belongs to a folder, an attachment upload to a topic.
+  folderId: string | null;
+  topicId: string | null;
   title: string;
   fileName: string;
   sizeBytes: number;
@@ -30,15 +33,15 @@ export interface UploadJob {
   coverWarning: boolean;
 }
 
-export interface StartInput {
+interface StartBase {
   file: File;
-  folderId: string;
   contentType: string;
   title: string;
-  description: string;
   durationSeconds: number | null;
-  cover: File | null;
 }
+
+// A library upload goes into a folder and may bring a description and a cover; an attachment goes into a topic.
+export type StartInput = (StartBase & { folderId: string; description: string; cover: File | null }) | (StartBase & { topicId: string });
 
 export interface UploadsValue {
   jobs: UploadJob[];
@@ -68,6 +71,8 @@ export function useUploads(): UploadsValue {
 const CONCURRENCY = 3;
 const MAX_ATTEMPTS = 5;
 const PAINT_INTERVAL_MS = 200;
+
+type ResumableUpload = Pick<PendingUpload, 'fileId' | 'itemId' | 'folderId' | 'topicId' | 'title' | 'fileName' | 'sizeBytes'>;
 
 interface Source {
   file: File;
@@ -149,13 +154,14 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
 
   // Starts (or restarts) sending from whatever the server already holds.
   const begin = useCallback(
-    (pending: Pick<PendingUpload, 'fileId' | 'itemId' | 'folderId' | 'title' | 'fileName' | 'sizeBytes'>, file: File, status: ServerUploadStatus) => {
+    (pending: ResumableUpload, file: File, status: ServerUploadStatus) => {
       sources.current.set(pending.fileId, { file, itemId: pending.itemId, partSize: status.partSize, partCount: status.partCount });
       const bytesSent = status.uploadedParts.reduce((sum, part) => sum + part.size, 0);
       const job: UploadJob = {
         id: pending.fileId,
         itemId: pending.itemId,
         folderId: pending.folderId,
+        topicId: pending.topicId,
         title: pending.title,
         fileName: pending.fileName,
         sizeBytes: pending.sizeBytes,
@@ -175,22 +181,32 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(
     async (input: StartInput) => {
-      const created = await startUpload({
-        folderId: input.folderId,
-        title: input.title,
-        description: input.description,
-        fileName: input.file.name,
-        contentType: input.contentType,
-        sizeBytes: input.file.size,
-        durationSeconds: input.durationSeconds,
-      });
+      const created =
+        'topicId' in input
+          ? await startAttachmentUpload(input.topicId, {
+              title: input.title,
+              fileName: input.file.name,
+              contentType: input.contentType,
+              sizeBytes: input.file.size,
+              durationSeconds: input.durationSeconds,
+            })
+          : await startUpload({
+              folderId: input.folderId,
+              title: input.title,
+              description: input.description,
+              fileName: input.file.name,
+              contentType: input.contentType,
+              sizeBytes: input.file.size,
+              durationSeconds: input.durationSeconds,
+            });
       sources.current.set(created.fileId, { file: input.file, itemId: created.itemId, partSize: created.partSize, partCount: created.partCount });
       setJobs((list) => [
         ...list,
         {
           id: created.fileId,
           itemId: created.itemId,
-          folderId: input.folderId,
+          folderId: 'folderId' in input ? input.folderId : null,
+          topicId: 'topicId' in input ? input.topicId : null,
           title: input.title.trim(),
           fileName: input.file.name,
           sizeBytes: input.file.size,
@@ -200,14 +216,14 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
           coverWarning: false,
         },
       ]);
-      void run(created.fileId, new Map(), input.cover);
+      void run(created.fileId, new Map(), 'cover' in input ? input.cover : null);
     },
     [run],
   );
 
   // Resumes or retries from what the server holds. An upload the server already finished only needs to be shown as done.
   const continueFromServer = useCallback(
-    async (pending: Pick<PendingUpload, 'fileId' | 'itemId' | 'folderId' | 'title' | 'fileName' | 'sizeBytes'>, file: File) => {
+    async (pending: ResumableUpload, file: File) => {
       const status = await getUploadStatus(pending.fileId);
       if (status.status === 'ready') {
         sources.current.delete(pending.fileId);
@@ -242,7 +258,10 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
       if (!source || !job || controllers.current.has(id) || resuming.current.has(id)) return;
       resuming.current.add(id);
       try {
-        await continueFromServer({ fileId: id, itemId: job.itemId, folderId: job.folderId, title: job.title, fileName: job.fileName, sizeBytes: job.sizeBytes }, source.file);
+        await continueFromServer(
+          { fileId: id, itemId: job.itemId, folderId: job.folderId, topicId: job.topicId, title: job.title, fileName: job.fileName, sizeBytes: job.sizeBytes },
+          source.file,
+        );
       } catch (error) {
         patch(id, { status: 'failed', message: describeUploadError(error) });
       } finally {

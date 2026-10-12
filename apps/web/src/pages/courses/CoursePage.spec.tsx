@@ -4,6 +4,7 @@ import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CourseTree, TopicDetail } from '../../api/courses';
 import { PlayerProvider } from '../../player/PlayerContext';
+import { UploadsProvider } from '../../uploads/UploadsContext';
 import type { MockResponse } from '../../test/fetch-mock';
 import { LocationProbe, mockSession, renderWithSession, STAFF } from '../../test/session';
 import { CoursePage } from './CoursePage';
@@ -104,13 +105,15 @@ function startServer(overrides: Record<string, Override> = {}, course: CourseTre
 
 function renderPage(route = '/courses/c1') {
   return renderWithSession(
-    <PlayerProvider>
-      <Routes>
-        <Route path="/courses/:courseId" element={<CoursePage />} />
-        <Route path="/courses" element={<p>The course list</p>} />
-      </Routes>
-      <LocationProbe />
-    </PlayerProvider>,
+    <UploadsProvider>
+      <PlayerProvider>
+        <Routes>
+          <Route path="/courses/:courseId" element={<CoursePage />} />
+          <Route path="/courses" element={<p>The course list</p>} />
+        </Routes>
+        <LocationProbe />
+      </PlayerProvider>
+    </UploadsProvider>,
     route,
   );
 }

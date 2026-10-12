@@ -51,7 +51,9 @@ export interface UploadStatus {
 export interface PendingUpload {
   fileId: string;
   itemId: string;
-  folderId: string;
+  // A library upload belongs to a folder, an attachment upload to a topic.
+  folderId: string | null;
+  topicId: string | null;
   title: string;
   fileName: string;
   sizeBytes: number;
@@ -62,6 +64,14 @@ export interface PlayLink {
   url: string;
   expiresAt: string;
   contentType: string;
+}
+
+export interface StartAttachmentUploadInput {
+  title: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  durationSeconds: number | null;
 }
 
 export interface StartUploadInput {
@@ -98,13 +108,17 @@ export const playItem = (id: string): Promise<PlayLink> => api<PlayLink>(`/api/m
 export const startUpload = (input: StartUploadInput): Promise<StartedUpload> =>
   api<StartedUpload>('/api/media/uploads', { method: 'POST', body: input });
 
+export const startAttachmentUpload = (topicId: string, input: StartAttachmentUploadInput): Promise<StartedUpload> =>
+  api<StartedUpload>(`/api/topics/${topicId}/attachments/uploads`, { method: 'POST', body: input });
+
 export const getPartUrls = (fileId: string, partNumbers: number[]): Promise<{ urls: Record<string, string> }> =>
   api(`/api/media/uploads/${fileId}/part-urls`, { method: 'POST', body: { partNumbers } });
 
 export const getUploadStatus = (fileId: string): Promise<UploadStatus> => api<UploadStatus>(`/api/media/uploads/${fileId}`);
 
-export const completeUpload = (fileId: string, parts: { partNumber: number; etag: string }[]): Promise<MediaItem> =>
-  api<MediaItem>(`/api/media/uploads/${fileId}/complete`, { method: 'POST', body: { parts } });
+// Answers the finished library item or attachment; the upload manager only needs to know it finished.
+export const completeUpload = (fileId: string, parts: { partNumber: number; etag: string }[]): Promise<unknown> =>
+  api<unknown>(`/api/media/uploads/${fileId}/complete`, { method: 'POST', body: { parts } });
 
 export const cancelUpload = (fileId: string): Promise<void> => api<void>(`/api/media/uploads/${fileId}`, { method: 'DELETE' });
 

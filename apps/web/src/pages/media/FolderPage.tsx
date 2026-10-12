@@ -8,6 +8,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
 import type { CategoryConfig } from '../../media/categories';
 import { usePlayer } from '../../player/PlayerContext';
+import { MEDIA_KINDS } from '../../uploads/limits';
 import { useUploads } from '../../uploads/UploadsContext';
 import { EditItemDialog } from './EditItemDialog';
 import { ItemsTable } from './ItemsTable';
@@ -135,7 +136,14 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
         />
       )}
 
-      <PendingUploads category={category} folderId={folderId} reloadKey={uploads.finishedCount} onChanged={() => void load()} />
+      <PendingUploads
+        belongs={(entry) => entry.folderId === folderId}
+        accept={MEDIA_KINDS[category.kind].accept}
+        noun={category.noun}
+        nounTitle={category.nounTitle}
+        reloadKey={uploads.finishedCount}
+        onChanged={() => void load()}
+      />
 
       <PlayerDialog video={playing} onClose={() => setPlaying(null)} />
       <UploadDialog open={uploading} category={category} folderId={folderId} onClose={() => setUploading(false)} onStarted={() => void load()} />

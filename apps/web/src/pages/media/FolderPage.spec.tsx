@@ -330,7 +330,7 @@ describe('FolderPage', () => {
 
   it('shows the progress of a video being sent from this browser in its row', async () => {
     startServer();
-    const job: UploadJob = { id: 'u3', itemId: 'v3', folderId: 'f1', title: 'x', fileName: 'x.mp4', sizeBytes: 100, bytesSent: 62, status: 'sending', message: null, coverWarning: false };
+    const job: UploadJob = { id: 'u3', itemId: 'v3', folderId: 'f1', topicId: null, title: 'x', fileName: 'x.mp4', sizeBytes: 100, bytesSent: 62, status: 'sending', message: null, coverWarning: false };
     renderPage('/videos/f1', fakeUploads({ jobs: [job] }));
     expect(await screen.findByText('Uploading 62%')).toBeInTheDocument();
   });
