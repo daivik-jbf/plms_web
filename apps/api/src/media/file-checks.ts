@@ -38,6 +38,9 @@ export function imageMatches(bytes: Uint8Array, contentType: string): boolean {
 export const hasMp3Signature = (bytes: Uint8Array): boolean =>
   startsWith(bytes, 0, ascii('ID3')) || (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0);
 
+// A PDF starts with the marker "%PDF-" (followed by the version, for example "%PDF-1.7").
+export const hasPdfSignature = (bytes: Uint8Array): boolean => startsWith(bytes, 0, ascii('%PDF-'));
+
 // MP3 by its own signature. An M4A is an MP4 container, so it starts with the same "ftyp" box as a video; the declared
 // type and the folder's category decide what is accepted.
 export function audioMatches(bytes: Uint8Array, contentType: string): boolean {

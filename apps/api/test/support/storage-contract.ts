@@ -12,7 +12,7 @@ export interface StorageHarness {
 
 const filled = (length: number, value: number): Uint8Array => new Uint8Array(length).fill(value);
 const text = (value: string): Uint8Array => new TextEncoder().encode(value);
-const newKey = (prefix: 'videos' | 'covers' | 'audio' = 'videos'): string => `${prefix}/${randomUUID()}`;
+const newKey = (prefix: 'videos' | 'covers' | 'audio' | 'documents' | 'images' = 'videos'): string => `${prefix}/${randomUUID()}`;
 
 export function describeStorageContract(name: string, create: () => Promise<StorageHarness>): void {
   describe(`storage contract: ${name}`, () => {
@@ -147,6 +147,23 @@ export function describeStorageContract(name: string, create: () => Promise<Stor
       const read = await harness.get(await storage.presignGet(key, 3600, { contentType: 'audio/mpeg' }));
       expect(read.status).toBe(200);
       expect(read.contentType).toMatch(/^audio\/mpeg/);
+      expect(Array.from(read.body)).toEqual(Array.from(bytes));
+    });
+
+    it.each([
+      ['documents', 'application/pdf', [0x25, 0x50, 0x44, 0x46, 0x2d, 1]],
+      ['images', 'image/png', [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+    ] as const)('stores and serves a file under a %s/ key', async (prefix, contentType, content) => {
+      const { storage } = harness;
+      const key = newKey(prefix);
+      const bytes = new Uint8Array(content);
+      const uploadId = await storage.createMultipartUpload(key, contentType);
+      const piece = await uploadPiece(key, uploadId, 1, bytes);
+      await storage.completeMultipartUpload(key, uploadId, [piece]);
+      expect(await storage.head(key)).toEqual({ size: bytes.length, contentType });
+      const read = await harness.get(await storage.presignGet(key, 3600, { contentType }));
+      expect(read.status).toBe(200);
+      expect(read.contentType).toMatch(new RegExp(`^${contentType}`));
       expect(Array.from(read.body)).toEqual(Array.from(bytes));
     });
   });

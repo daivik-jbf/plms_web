@@ -35,6 +35,8 @@ const FAILURE_MESSAGES = {
   size_mismatch: 'The uploaded file is not the size it was declared to be, so it was discarded. Please upload it again.',
   not_mp4: 'That file is not a valid MP4 video, so it was discarded. Convert it to MP4 first (for example with HandBrake).',
   not_audio: 'That file is not a valid MP3 or M4A audio file, so it was discarded. Please choose another file.',
+  not_pdf: 'That file is not a valid PDF, so it was discarded. Please choose another file.',
+  not_image: 'That file is not a valid JPEG, PNG or WebP image, so it was discarded. Please choose another file.',
 } as const;
 
 type FailureReason = keyof typeof FAILURE_MESSAGES;

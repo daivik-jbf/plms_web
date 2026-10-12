@@ -74,6 +74,8 @@ describe('media audit presentation', () => {
   it.each([
     ['not_mp4', 'the file is not a valid MP4'],
     ['not_audio', 'the file is not a valid MP3 or M4A'],
+    ['not_pdf', 'the file is not a valid PDF'],
+    ['not_image', 'the file is not a valid JPEG, PNG or WebP image'],
     ['bad_image', 'the cover image is not valid'],
     ['expired', 'it was not finished within 24 hours'],
   ])('explains the failure reason %s in plain words', (reason, words) => {

@@ -1,4 +1,4 @@
-import { audioMatches, hasMp3Signature, hasMp4Signature, imageMatches, sanitizeFileName } from './file-checks';
+import { audioMatches, hasMp3Signature, hasMp4Signature, hasPdfSignature, imageMatches, sanitizeFileName } from './file-checks';
 
 const mp4 = [0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32];
 
@@ -96,5 +96,29 @@ describe('audioMatches', () => {
       expect(audioMatches(new Uint8Array(m4a), type)).toBe(false);
       expect(audioMatches(new Uint8Array(mp3), type)).toBe(false);
     }
+  });
+});
+
+describe('hasPdfSignature', () => {
+  const ascii = (text: string): number[] => [...text].map((character) => character.charCodeAt(0));
+
+  it.each([
+    ['a PDF 1.7 header', ascii('%PDF-1.7\n%')],
+    ['exactly the five marker bytes', ascii('%PDF-')],
+  ])('accepts %s', (_name, bytes) => {
+    expect(hasPdfSignature(new Uint8Array(bytes))).toBe(true);
+  });
+
+  it.each([
+    ['nothing', []],
+    ['an unfinished marker (%PDF)', ascii('%PDF')],
+    ['a lower-case marker (%pdf-)', ascii('%pdf-1.4')],
+    ['a marker one byte late', [0x20, ...ascii('%PDF-1.4')]],
+    ['a marker without the dash (%PDF1)', ascii('%PDF1.4')],
+    ['a JPEG', [0xff, 0xd8, 0xff, 0xe0]],
+    ['a ZIP archive', [0x50, 0x4b, 0x03, 0x04]],
+    ['an MP4', mp4],
+  ])('refuses %s', (_name, bytes) => {
+    expect(hasPdfSignature(new Uint8Array(bytes))).toBe(false);
   });
 });
