@@ -11,6 +11,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AccountPage } from './pages/account/AccountPage';
 import { AuditPage } from './pages/audit/AuditPage';
+import { CoursePage } from './pages/courses/CoursePage';
 import { CoursesPage } from './pages/courses/CoursesPage';
 import { CategoryPage } from './pages/media/CategoryPage';
 import { FolderPage } from './pages/media/FolderPage';
@@ -27,6 +28,7 @@ export function App() {
         <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/courses" element={<CoursesPage />} />
+          <Route path="/courses/:courseId" element={<CoursePage />} />
           {/* The key gives each category its own page state when moving between, say, Videos and Songs. */}
           {CATEGORIES.map((category) => (
             <Route key={category.slug} path={`/${category.slug}`} element={<CategoryPage key={category.slug} category={category} />} />

@@ -25,6 +25,18 @@ describe('App routes for the media categories', () => {
     await waitFor(() => expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain('/api/courses'));
   });
 
+  it('opens a course on /courses/:courseId with the topic from the address', async () => {
+    mockSession(STAFF, (url) => {
+      if (url === '/api/courses/c1') return { body: { id: 'c1', title: 'Fire safety', description: null, position: 0, coverUrl: null, createdBy: { id: 'u1', name: 'Anita Rao' }, createdAt: '2026-10-09T10:00:00Z', lessons: [{ id: 'l1', title: 'Exits', position: 0, topics: [{ id: 't1', title: 'Fire exits', position: 0, attachmentCount: 0 }] }] } };
+      if (url === '/api/topics/t1') return { body: { id: 't1', lessonId: 'l1', courseId: 'c1', title: 'Fire exits', description: null, position: 0 } };
+      return { status: 404, body: {} };
+    });
+    renderWithSession(<App />, '/courses/c1?topic=t1');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Fire safety' }, { timeout: 5000 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Fire exits' })).toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link', { name: 'Courses' })).toHaveAttribute('href', '/courses');
+  });
+
   it('opens a folder inside its category', async () => {
     mockSession(STAFF, (url) => {
       if (url === '/api/media/songs/folders') return { body: [{ id: 'f9', name: 'Road trip', position: 0, itemCount: 0, category: 'song' }] };

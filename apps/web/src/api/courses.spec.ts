@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSession, STAFF } from '../test/session';
-import { createCourse, listCourses, reorderCourses, updateCourse } from './courses';
+import { createCourse, getCourse, getTopic, listCourses, reorderCourses, updateCourse, uploadCourseCover } from './courses';
 
 describe('courses api', () => {
   beforeEach(() => vi.unstubAllGlobals());
@@ -21,5 +21,35 @@ describe('courses api', () => {
       'PUT /api/courses/order {"ids":["b","a"]}',
       'PATCH /api/courses/c1 {"title":"New"}',
     ]);
+  });
+});
+
+describe('course page api', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it('reads a course and a topic', async () => {
+    const calls: string[] = [];
+    mockSession(STAFF, (url, init) => {
+      calls.push(`${init.method ?? 'GET'} ${url}`);
+      return { body: {} };
+    });
+    await getCourse('c1');
+    await getTopic('t1');
+    expect(calls.filter((call) => call.includes('/api/courses') || call.includes('/api/topics'))).toEqual(['GET /api/courses/c1', 'GET /api/topics/t1']);
+  });
+
+  it('uploads a course cover in three steps, sending the file to the returned link without the sign-in header', async () => {
+    const calls: { key: string; headers: Record<string, string> }[] = [];
+    mockSession(STAFF, (url, init) => {
+      calls.push({ key: `${init.method ?? 'GET'} ${url}`, headers: (init.headers ?? {}) as Record<string, string> });
+      if (url === '/api/courses/c1/cover') return { status: 201, body: { fileId: 'f1', url: 'https://storage.example/put?sig=1', headers: { 'Content-Type': 'image/png' } } };
+      if (url === 'https://storage.example/put?sig=1') return { status: 200, body: {} };
+      return { body: { id: 'c1', lessons: [] } };
+    });
+    const file = new File(['x'], 'cover.png', { type: 'image/png' });
+    await expect(uploadCourseCover('c1', file)).resolves.toMatchObject({ id: 'c1' });
+    const steps = calls.filter((call) => /cover|storage\.example/.test(call.key));
+    expect(steps.map((call) => call.key)).toEqual(['POST /api/courses/c1/cover', 'PUT https://storage.example/put?sig=1', 'POST /api/courses/c1/cover/f1/complete']);
+    expect(steps[1]!.headers).not.toHaveProperty('Authorization');
   });
 });

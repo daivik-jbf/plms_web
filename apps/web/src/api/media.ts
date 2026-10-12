@@ -111,13 +111,15 @@ export const cancelUpload = (fileId: string): Promise<void> => api<void>(`/api/m
 export const listMyUploads = (): Promise<PendingUpload[]> => api<PendingUpload[]>('/api/media/uploads/mine');
 
 // Three steps: ask for a one-time link, send the file straight to storage (no sign-in header: the link is the
-// credential), then tell the API to check and attach it.
-export async function uploadCover(itemId: string, file: File): Promise<MediaItem> {
-  const started = await api<{ fileId: string; url: string; headers: Record<string, string> }>(`/api/media/items/${itemId}/cover`, {
+// credential), then tell the API to check and attach it. `base` is the owner of the cover, for example /api/media/items/<id>.
+export async function uploadCoverTo<T>(base: string, file: File): Promise<T> {
+  const started = await api<{ fileId: string; url: string; headers: Record<string, string> }>(`${base}/cover`, {
     method: 'POST',
     body: { contentType: file.type, sizeBytes: file.size },
   });
   const response = await fetch(started.url, { method: 'PUT', headers: started.headers, body: file });
   if (!response.ok) throw new ApiError(response.status, 'The cover image could not be uploaded. Please try again.');
-  return api<MediaItem>(`/api/media/items/${itemId}/cover/${started.fileId}/complete`, { method: 'POST' });
+  return api<T>(`${base}/cover/${started.fileId}/complete`, { method: 'POST' });
 }
+
+export const uploadCover = (itemId: string, file: File): Promise<MediaItem> => uploadCoverTo<MediaItem>(`/api/media/items/${itemId}`, file);

@@ -1,4 +1,5 @@
 import { api } from './client';
+import { uploadCoverTo } from './media';
 
 export interface CourseSummary {
   id: string;
@@ -39,6 +40,15 @@ export interface CourseTree {
   lessons: LessonNode[];
 }
 
+export interface TopicView {
+  id: string;
+  lessonId: string;
+  courseId: string;
+  title: string;
+  description: string | null;
+  position: number;
+}
+
 export const listCourses = (): Promise<CourseSummary[]> => api<CourseSummary[]>('/api/courses');
 
 export const createCourse = (input: { title: string; description: string }): Promise<CourseSummary> =>
@@ -49,3 +59,10 @@ export const reorderCourses = (ids: string[]): Promise<CourseSummary[]> =>
 
 export const updateCourse = (id: string, input: { title?: string; description?: string }): Promise<CourseTree> =>
   api<CourseTree>(`/api/courses/${id}`, { method: 'PATCH', body: input });
+
+
+export const getCourse = (id: string): Promise<CourseTree> => api<CourseTree>(`/api/courses/${id}`);
+
+export const getTopic = (id: string): Promise<TopicView> => api<TopicView>(`/api/topics/${id}`);
+
+export const uploadCourseCover = (id: string, file: File): Promise<CourseTree> => uploadCoverTo<CourseTree>(`/api/courses/${id}`, file);
