@@ -1,13 +1,24 @@
-import { Body, Controller, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import type { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodPipe } from '../common/zod.pipe';
+import { type AttachmentView, AttachmentsService } from '../media/attachments.service';
+import { type LibraryAttachmentInput, libraryAttachmentSchema, orderSchema } from '../media/media.schemas';
 import { type UpdateTopicInput, updateTopicSchema } from './courses.schemas';
-import { TopicsService, type TopicView } from './topics.service';
+import { type TopicDetail, TopicsService, type TopicView } from './topics.service';
 
 @Controller('topics')
 export class TopicsController {
-  constructor(private readonly topics: TopicsService) {}
+  constructor(
+    private readonly topics: TopicsService,
+    private readonly attachments: AttachmentsService,
+  ) {}
+
+  @Get(':id')
+  detail(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<TopicDetail> {
+    return this.topics.detail(actor, id);
+  }
 
   @Patch(':id')
   edit(
@@ -16,5 +27,23 @@ export class TopicsController {
     @Body(new ZodPipe(updateTopicSchema)) body: UpdateTopicInput,
   ): Promise<TopicView> {
     return this.topics.edit(actor, id, body);
+  }
+
+  @Post(':id/attachments/library')
+  attachFromLibrary(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(libraryAttachmentSchema)) body: LibraryAttachmentInput,
+  ): Promise<AttachmentView> {
+    return this.attachments.addFromLibrary(actor, id, body);
+  }
+
+  @Put(':id/attachments/order')
+  reorderAttachments(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(orderSchema)) body: z.infer<typeof orderSchema>,
+  ): Promise<AttachmentView[]> {
+    return this.attachments.reorder(actor, id, body.ids);
   }
 }

@@ -80,3 +80,58 @@ describe('lesson and topic audit presentation', () => {
     expect(structure.every((action) => categoryOf(action) === 'content')).toBe(true);
   });
 });
+
+describe('attachment audit presentation', () => {
+  it.each([
+    ['pdf', 'PDF'],
+    ['video', 'video'],
+    ['audio', 'audio file'],
+    ['image', 'image'],
+  ])('says "%s" as "%s"', (kind, word) => {
+    const added = presentAudit(entry({ action: 'content.attachment.added', targetLabel: 'Exit map', metadata: { kind, topicTitle: 'Fire exits' } }));
+    expect(added).toEqual({
+      label: 'Attachment added',
+      tone: 'change',
+      category: 'content',
+      summary: `Anita Rao added the ${word} 'Exit map' to the topic 'Fire exits'`,
+    });
+    expect(presentAudit(entry({ action: 'playback.viewed', targetLabel: 'Exit map', metadata: { kind } })).summary).toBe(`Anita Rao opened the ${word} 'Exit map'`);
+  });
+
+  it('falls back to "attachment" and leaves out a topic that was not recorded', () => {
+    for (const metadata of [null, {}, { kind: 'constructor' }, { kind: '__proto__' }, { kind: 5 }, { kind: 'spreadsheet', topicTitle: 7 }]) {
+      expect(presentAudit(entry({ action: 'content.attachment.added', targetLabel: 'T', metadata })).summary).toBe("Anita Rao added the attachment 'T'");
+      expect(presentAudit(entry({ action: 'playback.viewed', targetLabel: 'T', metadata })).summary).toBe("Anita Rao opened the attachment 'T'");
+    }
+  });
+
+  it.each([
+    [
+      'content.attachment.renamed',
+      { targetLabel: 'Exit map', changes: { title: { before: 'Map', after: 'Exit map' } } },
+      'Attachment renamed',
+      'change',
+      "Anita Rao renamed the attachment from 'Map' to 'Exit map'",
+    ],
+    ['content.attachment.renamed', { targetLabel: 'Exit map' }, 'Attachment renamed', 'change', "Anita Rao renamed the attachment 'Exit map'"],
+    [
+      'content.attachment.reordered',
+      { targetLabel: 'Fire exits' },
+      'Attachments reordered',
+      'neutral',
+      "Anita Rao changed the order of the attachments in the topic 'Fire exits'",
+    ],
+  ] as const)('%s', (action, overrides, label, tone, summary) => {
+    expect(presentAudit(entry({ action, ...overrides }))).toEqual({ label, tone, category: 'content', summary });
+  });
+
+  it('presents viewing as a playback entry', () => {
+    expect(presentAudit(entry({ action: 'playback.viewed', targetLabel: 'Exit map', metadata: { kind: 'pdf' } }))).toEqual({
+      label: 'Viewed',
+      tone: 'neutral',
+      category: 'playback',
+      summary: "Anita Rao opened the PDF 'Exit map'",
+    });
+    expect(categoryOf('playback.viewed')).toBe('playback');
+  });
+});

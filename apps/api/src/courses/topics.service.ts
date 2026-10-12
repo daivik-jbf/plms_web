@@ -5,6 +5,7 @@ import type { AuthUser } from '../auth/auth.types';
 import { DB, type Database } from '../db/db.module';
 import { type AuditChanges, lessons, topics } from '../db/schema';
 import { actorOf } from '../media/actor';
+import { type AttachmentView, AttachmentsService } from '../media/attachments.service';
 import { applyOrder } from '../media/reorder';
 import type { CreateTopicInput, UpdateTopicInput } from './courses.schemas';
 import { type CourseTree, CoursesService } from './courses.service';
@@ -21,6 +22,11 @@ export interface TopicView {
   position: number;
 }
 
+// A topic with the attachments the person may see: every ready one, and their own that are still uploading.
+export interface TopicDetail extends TopicView {
+  attachments: AttachmentView[];
+}
+
 @Injectable()
 export class TopicsService {
   constructor(
@@ -28,7 +34,13 @@ export class TopicsService {
     private readonly audit: AuditService,
     private readonly courses: CoursesService,
     private readonly lessons: LessonsService,
+    private readonly attachments: AttachmentsService,
   ) {}
+
+  async detail(actor: AuthUser, id: string): Promise<TopicDetail> {
+    const topic = await this.view(id);
+    return { ...topic, attachments: await this.attachments.list(id, actor) };
+  }
 
   async add(actor: AuthUser, lessonId: string, input: CreateTopicInput): Promise<CourseTree> {
     const courseId = await this.db.transaction(async (tx) => {

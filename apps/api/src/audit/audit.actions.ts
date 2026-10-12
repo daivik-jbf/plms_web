@@ -33,11 +33,15 @@ export const AUDIT_ACTIONS = [
   'content.topic.added',
   'content.topic.edited',
   'content.topic.reordered',
+  'content.attachment.added',
+  'content.attachment.renamed',
+  'content.attachment.reordered',
   'file.upload_started',
   'file.upload_completed',
   'file.upload_failed',
   'file.upload_cancelled',
   'playback.played',
+  'playback.viewed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

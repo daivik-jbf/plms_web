@@ -116,6 +116,14 @@ const metaText = (entry: PresentableEntry, key: string): string | null => {
   return typeof value === 'string' ? value : null;
 };
 
+// How an attachment is called in a sentence. Own keys only: a stored kind such as 'constructor' falls back to "attachment".
+const ATTACHMENT_WORDS: Record<string, string> = { video: 'video', audio: 'audio file', pdf: 'PDF', image: 'image' };
+const attachmentWord = (entry: PresentableEntry): string => {
+  const kind = metaText(entry, 'kind');
+  return kind !== null && Object.hasOwn(ATTACHMENT_WORDS, kind) ? ATTACHMENT_WORDS[kind] : 'attachment';
+};
+
+// "from 'a' to 'b'" for an entry that recorded a change of one text field, or null.
 // "from 'a' to 'b'" for an entry that recorded a change of one text field, or null.
 const changedText = (entry: PresentableEntry, field: string): { before: string; after: string } | null => {
   const { before, after } = entry.changes?.[field] ?? {};
@@ -287,6 +295,30 @@ const SPECS: Record<AuditAction, ActionSpec> = {
     tone: 'neutral',
     summary: ({ actor, target }) => `${actor} changed the order of the topics in the lesson ${quoted(target)}`,
   },
+  'content.attachment.added': {
+    label: 'Attachment added',
+    tone: 'change',
+    summary: ({ actor, target, entry }) => {
+      const topic = metaText(entry, 'topicTitle');
+      const added = `${actor} added the ${attachmentWord(entry)} ${quoted(target)}`;
+      return topic ? `${added} to the topic ${quoted(topic)}` : added;
+    },
+  },
+  'content.attachment.renamed': {
+    label: 'Attachment renamed',
+    tone: 'change',
+    summary: ({ actor, target, entry }) => {
+      const title = changedText(entry, 'title');
+      return title
+        ? `${actor} renamed the attachment from ${quoted(title.before)} to ${quoted(title.after)}`
+        : `${actor} renamed the attachment ${quoted(target)}`;
+    },
+  },
+  'content.attachment.reordered': {
+    label: 'Attachments reordered',
+    tone: 'neutral',
+    summary: ({ actor, target }) => `${actor} changed the order of the attachments in the topic ${quoted(target)}`,
+  },
   'file.upload_started': {
     label: 'Upload started',
     tone: 'neutral',
@@ -307,6 +339,11 @@ const SPECS: Record<AuditAction, ActionSpec> = {
     label: 'Played',
     tone: 'neutral',
     summary: ({ actor, target }) => `${actor} played ${target}`,
+  },
+  'playback.viewed': {
+    label: 'Viewed',
+    tone: 'neutral',
+    summary: ({ actor, target, entry }) => `${actor} opened the ${attachmentWord(entry)} ${quoted(target)}`,
   },
 };
 

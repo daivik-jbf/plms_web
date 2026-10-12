@@ -1,10 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { Database, DbTransaction } from '../../src/db/db.module';
-import { type Lesson, lessons, type Topic, topics } from '../../src/db/schema';
+import { files, type Lesson, lessons, topicAttachments, type Topic, topics } from '../../src/db/schema';
 import type { InMemoryStorage } from '../support/in-memory-storage';
 import { bearer, type Session } from './auth';
-import { pngBytes, uniqueName } from './media';
+import { m4aBytes, mp4Bytes, pdfBytes, pngBytes, uniqueName } from './media';
 
 export interface CourseBody {
   id: string;
@@ -89,4 +90,82 @@ export async function addTopicViaApi(app: INestApplication, session: Session, le
     .send({ title: uniqueName('Topic'), ...body })
     .expect(201);
   return res.body;
+}
+
+const SEED_FILES = {
+  video: { prefix: 'videos', contentType: 'video/mp4', bytes: mp4Bytes },
+  audio: { prefix: 'audio', contentType: 'audio/mp4', bytes: m4aBytes },
+  pdf: { prefix: 'documents', contentType: 'application/pdf', bytes: pdfBytes },
+  image: { prefix: 'images', contentType: 'image/png', bytes: pngBytes },
+} as const;
+
+export interface SeedAttachmentOptions {
+  topicId: string;
+  createdBy: string;
+  kind?: keyof typeof SEED_FILES;
+  title?: string;
+  status?: 'uploading' | 'ready';
+  position?: number;
+  sizeBytes?: number;
+  durationSeconds?: number | null;
+  // A library item to follow instead of an uploaded file.
+  libraryItemId?: string;
+  // The attachment's own title; null (the default for a library attachment) follows the item's title.
+  libraryTitle?: string | null;
+  storage?: InMemoryStorage; // when given, the bytes of a ready uploaded file are put into it
+}
+
+// An attachment straight in the database: an uploaded file (ready or still uploading) or a library item.
+export async function seedAttachment(db: Database, options: SeedAttachmentOptions) {
+  const status = options.status ?? 'ready';
+  const kind = options.kind ?? 'pdf';
+  if (options.libraryItemId) {
+    const [row] = await db
+      .insert(topicAttachments)
+      .values({
+        topicId: options.topicId,
+        position: options.position ?? 0,
+        kind,
+        title: options.libraryTitle ?? null,
+        libraryItemId: options.libraryItemId,
+        status: 'ready',
+        createdBy: options.createdBy,
+      })
+      .returning();
+    return { attachmentId: row.id, fileId: null, storageKey: null };
+  }
+  const seed = SEED_FILES[kind];
+  const sizeBytes = options.sizeBytes ?? 64;
+  const storageKey = `${seed.prefix}/${randomUUID()}`;
+  const [file] = await db
+    .insert(files)
+    .values({
+      purpose: kind,
+      storageKey,
+      originalName: `seed.${kind}`,
+      contentType: seed.contentType,
+      sizeBytes,
+      status: status === 'ready' ? 'ready' : 'pending',
+      uploadId: status === 'ready' ? null : randomUUID(),
+      partSize: status === 'ready' ? null : 16_777_216,
+      partCount: status === 'ready' ? null : 1,
+      uploadedBy: options.createdBy,
+      completedAt: status === 'ready' ? new Date() : null,
+    })
+    .returning();
+  if (status === 'ready') options.storage?.seed(storageKey, seed.bytes(sizeBytes), seed.contentType);
+  const [row] = await db
+    .insert(topicAttachments)
+    .values({
+      topicId: options.topicId,
+      position: options.position ?? 0,
+      kind,
+      title: options.title ?? `Attachment ${randomUUID().slice(0, 8)}`,
+      fileId: file.id,
+      durationSeconds: options.durationSeconds ?? null,
+      status,
+      createdBy: options.createdBy,
+    })
+    .returning();
+  return { attachmentId: row.id, fileId: file.id, storageKey };
 }

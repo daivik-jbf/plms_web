@@ -63,6 +63,12 @@ export const coverStartSchema = z.object({
 
 export const ORDER_CHANGED_MESSAGE = 'The list changed while you were editing it. Reload and try again.';
 
+// Attaching a library item to a topic: the title is optional; without one the attachment follows the item's own title.
+export const libraryAttachmentSchema = z.object({ itemId: z.uuid(), title: titleSchema.optional() });
+
+export const attachmentTitleSchema = z.object({ title: titleSchema });
+
 export type StartUploadInput = z.infer<typeof startUploadSchema>;
 export type UpdateItemInput = z.infer<typeof updateItemSchema>;
 export type CoverStartInput = z.infer<typeof coverStartSchema>;
+export type LibraryAttachmentInput = z.infer<typeof libraryAttachmentSchema>;

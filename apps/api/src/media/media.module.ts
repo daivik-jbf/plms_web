@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
+import { AttachmentsService } from './attachments.service';
 import { CoversService } from './covers.service';
 import { FoldersService } from './folders.service';
 import { ItemsService } from './items.service';
@@ -11,7 +12,7 @@ import { UploadsService } from './uploads.service';
 @Module({
   imports: [AuditModule],
   controllers: [MediaController, UploadsController],
-  providers: [CoversService, FoldersService, ItemsService, UploadCleanupService, UploadsService],
-  exports: [CoversService, ItemsService],
+  providers: [AttachmentsService, CoversService, FoldersService, ItemsService, UploadCleanupService, UploadsService],
+  exports: [AttachmentsService, CoversService, ItemsService],
 })
 export class MediaModule {}

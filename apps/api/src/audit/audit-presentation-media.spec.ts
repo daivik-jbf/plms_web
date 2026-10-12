@@ -91,9 +91,9 @@ describe('media audit presentation', () => {
 
   it('files the media actions under the right categories', () => {
     const media = AUDIT_ACTIONS.filter((action) => /^(content\.(folder|video)|file\.upload|playback\.)/.test(action));
-    expect(media).toHaveLength(12);
+    expect(media).toHaveLength(13);
     expect(media.filter((action) => categoryOf(action) === 'content')).toHaveLength(7);
     expect(media.filter((action) => categoryOf(action) === 'files')).toHaveLength(4);
-    expect(media.filter((action) => categoryOf(action) === 'playback')).toEqual(['playback.played']);
+    expect(media.filter((action) => categoryOf(action) === 'playback')).toEqual(['playback.played', 'playback.viewed']);
   });
 });
