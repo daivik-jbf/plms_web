@@ -107,7 +107,7 @@ describe('AppShell', () => {
   it('lists the four media categories after the Dashboard, for everyone', async () => {
     renderShell(STAFF);
     const nav = await screen.findByRole('navigation', { name: 'Main' });
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent).slice(0, 5)).toEqual(['Dashboard', 'Videos', 'Movies', 'Podcasts', 'Songs']);
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent).slice(0, 6)).toEqual(['Dashboard', 'Courses', 'Videos', 'Movies', 'Podcasts', 'Songs']);
     for (const [name, href] of [
       ['Videos', '/videos'],
       ['Movies', '/movies'],

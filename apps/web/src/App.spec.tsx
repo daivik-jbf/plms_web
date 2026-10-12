@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { mockSession, renderWithSession, STAFF } from './test/session';
@@ -16,6 +16,13 @@ describe('App routes for the media categories', () => {
     renderWithSession(<App />, path);
     expect(await screen.findByRole('heading', { level: 1, name: heading }, { timeout: 5000 })).toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(`/api/media${path}/folders`);
+  });
+
+  it('lists the courses on /courses', async () => {
+    const fetchMock = mockSession(STAFF, (url) => (url === '/api/courses' ? { body: [] } : { status: 404, body: {} }));
+    renderWithSession(<App />, '/courses');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Courses' }, { timeout: 5000 })).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain('/api/courses'));
   });
 
   it('opens a folder inside its category', async () => {
