@@ -8,7 +8,7 @@ import { type FileRow, files } from '../db/schema';
 import { PENDING_UPLOAD_MAX_AGE_MS } from '../storage/storage.constants';
 import { STORAGE, type StoragePort } from '../storage/storage.port';
 import { discardStoredFile } from './discard';
-import { type RemovedUnfinished, removeUnfinishedItem } from './remove-unfinished';
+import { type RemovedUpload, removeUnfinished } from './remove-unfinished';
 
 const INTERVAL_MS = 60 * 60 * 1000;
 
@@ -64,18 +64,18 @@ export class UploadCleanupService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Deletes the rows (and the cover of an unfinished item) only if the file is still pending, so an item that finished
-  // a moment ago is never touched. The item row goes before the file rows, the same order as a cancel and a finish use,
-  // so they cannot deadlock. Returns null when nothing was removed.
-  private expire(file: FileRow): Promise<Pick<RemovedUnfinished, 'cover'> | null> {
+  // Deletes the rows (and the cover of an unfinished library item) only if the file is still pending, so an item or an
+  // attachment that finished a moment ago is never touched. The owner's row goes before the file rows, the same order as a
+  // cancel and a finish use, so they cannot deadlock. Returns null when nothing was removed.
+  private expire(file: FileRow): Promise<Pick<RemovedUpload, 'cover'> | null> {
     return this.db.transaction(async (tx) => {
       if (file.purpose !== 'cover') {
-        const removed = await removeUnfinishedItem(tx, file.id);
+        const removed = await removeUnfinished(tx, file.id);
         if (!removed) return null;
         await this.audit.record(tx, {
           actor: null,
           action: 'file.upload_failed',
-          target: { type: removed.item.category, id: removed.item.id, label: removed.item.title },
+          target: removed.target,
           metadata: { fileId: file.id, reason: 'expired' },
         });
         return { cover: removed.cover };
