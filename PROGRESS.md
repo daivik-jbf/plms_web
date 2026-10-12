@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-10-09
+Last updated: 2026-10-12
 
 ## Done: milestone 1 (project setup, auth and audit foundation)
 
@@ -40,7 +40,7 @@ Last updated: 2026-10-09
 - Documentation: `docs/storage.md` (the Cloudflare setup guide, written for a first-time user), `docs/api/media.md` (the contract) and the 12 new actions in `docs/api/audit.md`.
 - Tests at the end of the build: 453 API tests (44 suites) and 325 web tests (38 files), all passing. Lint and both builds are clean. `npm audit --audit-level=high` exits 0 (24 moderate advisories, all in development tooling: `esbuild` through `drizzle-kit` and `sprintf-js` through `jest`/`ts-jest`).
 
-## Done: milestone 4 (Movies, Podcasts, Songs and the docked player; built, awaiting approval)
+## Done: milestone 4 (Movies, Podcasts, Songs and the docked player; built and merged to `main` 2026-10-09)
 
 - Four fixed categories on one implementation: Videos, Movies, Podcasts and Songs. A kinds table (`apps/api/src/media/media-kinds.ts`, with a web copy in `apps/web/src/uploads/limits.ts` and `apps/web/src/media/categories.ts`) holds each category's content types, largest size, first-bytes check, storage prefix and words. The folder decides the kind; the declared type and size are checked against it.
 - Audio uploads: MP3 (`audio/mpeg`) and M4A (`audio/mp4`) up to 500 MiB (at most 32 pieces), checked on completion by the stored type and the first bytes (`ID3` or an MPEG frame for MP3, `ftyp` for M4A), with a new `not_audio` failure reason. Audio files are stored as `audio/<uuid>` with the file purpose `audio`. Videos and movies are unchanged (MP4, 2 GiB).
@@ -51,13 +51,23 @@ Last updated: 2026-10-09
 - Documentation: the media and audit API pages, `docs/storage.md`, the README and the architecture notes.
 - Tests at the end of the build: 539 API tests (48 suites) and 391 web tests (40 files), all passing. Lint and both builds are clean.
 
+## Done: milestone 5 (Courses, Lessons, Topics and attachments; built, awaiting approval)
+
+- Courses hold lessons, lessons hold topics, topics hold a text and attachments, all in a manual order with Move up and Move down at every level. A course has a title, a description and an optional cover. Nothing can be deleted.
+- Attachments are either uploaded into the topic (video, audio, PDF or image, with the same resumable engine, progress and Resume as the library) or picked from the library (a ready Videos, Movies, Podcasts or Songs item; it stays linked and follows later edits). Limits: video 2 GiB, audio 500 MiB, PDF 50 MiB (`%PDF-` first bytes), image 10 MiB (as covers); storage keys `documents/<uuid>` and `images/<uuid>`.
+- Database (migration `0005`): `courses`, `lessons`, `topics`, `topic_attachments` (exactly one of file or library item, the file unique) and the file purposes `pdf` and `image`. Tested on a database that already holds media and an upload in progress.
+- API (`docs/api/courses.md`): the tree in one answer, edits, exact reorders (409 otherwise), the cover for courses, topic detail, library attachments, uploads into a topic (the existing `/api/media/uploads/...` routes), opening an attachment (one-hour link, audited). Cancel, finish and the 24-hour cleanup work for attachments exactly as for library items.
+- Audit: 14 new actions (`content.course.*`, `content.lesson.*`, `content.topic.*`, `content.attachment.*`, `playback.viewed`) with sentences such as "Anita Rao added the PDF 'Exit map' to the topic 'Fire exits'".
+- Web: Courses first in the sidebar, the course list, the two-pane course page (an accessible tree with arrow keys, the topic, a deep link `?topic=`, a Back button on a phone), building the course, the attachment list with the library picker and the upload dialog, and the four ways to open an attachment (video pop-up, audio in the dock, PDF in a new tab, image pop-up).
+- Tests at the end of the build: 867 API tests (59 suites) and 531 web tests (46 files), all passing. Lint and both builds are clean.
+
 ## In progress
 
-Nothing in the build. Milestone 4 is built and waiting for the user's approval (see open items 23 to 26). Milestone 3 was built and merged to `main` on 2026-10-09 (commit 827e0d6); it has not been formally approved yet. `TASKS.md` is unchanged.
+Nothing in the build. Milestone 5 is built and waiting for the user's approval (see open items 27 to 31). Milestones 3 and 4 are merged to `main`; neither has been formally approved yet. `TASKS.md` is unchanged.
 
-## Next: milestone 5
+## Next: milestone 6
 
-Courses and attachments.
+Delete, Trash and restore, offline download and sync endpoints, the generated OpenAPI document.
 
 ## Open items and questions
 
@@ -87,3 +97,8 @@ Courses and attachments.
 24. Some MP3 and HE-AAC encodings play in some browsers and not in others: the server checks the file format (type and first bytes), not the codec.
 25. A video MP4 declared as `audio/mp4` and uploaded into a Songs or Podcasts folder passes the `ftyp` check and is accepted (spec risk 4); the browser's audio element plays the audio track, if there is one.
 26. The Cloudflare account and R2 bucket are still not connected (item 19 stays); audio uploads have only been exercised with the local and in-memory drivers.
+27. The browser parts of milestone 5 (the tree's keyboard use and focus ring, the two-pane layout and the phone Back behaviour, a PDF opening in a new tab and the pop-up blocker, an image in the pop-up, audio from a topic in the dock) were verified only with automated (jsdom) tests, not in a real browser.
+28. A PDF opens in the browser's own viewer; a phone may download it instead.
+29. A library attachment follows its library item. When milestone 6 lets an item be trashed, the attachment will have to show as unavailable; that behaviour is designed in milestone 6.
+30. The topic text and the attachment titles are plain text; there is no rich text, no lesson description, no progress or completion tracking.
+31. The Cloudflare account and R2 bucket are still not connected (item 19 stays); PDFs and images have only been exercised with the local and in-memory drivers.

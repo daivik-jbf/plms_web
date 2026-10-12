@@ -1,10 +1,11 @@
-# JBF LMS API: media (videos, movies, podcasts, songs), uploads and playback (milestones 3 and 4)
+# JBF LMS API: media (videos, movies, podcasts, songs), uploads and playback (milestones 3 to 5)
 
 This is the hand-written contract for the media endpoints, written from the code (`apps/api/src/media/`, `apps/api/src/storage/`) and its end-to-end tests (`apps/api/test/media-*.e2e-spec.ts`). Authentication, token handling, the error body shape and the rate-limit rules are described in `docs/api/auth.md`; this page only adds what is specific to media. Setting up the storage service (Cloudflare R2) is described in `docs/storage.md`. A generated OpenAPI document is still planned for milestone 6 (see `PROGRESS.md`).
 
 - Base path: every route starts with `/api/media`.
 - Access: **any signed-in person (Admin or Staff)**. No token gives 401 (`Unauthorized`). There are no role-only routes here; the only Admin extras are described under "Visibility and ownership".
-- Nothing in milestones 3 and 4 deletes content. The only removal is cancelling your own unfinished upload.
+- Nothing in milestones 3 to 5 deletes content. The only removal is cancelling your own unfinished upload.
+- Since milestone 5 the upload routes below also carry the files that are uploaded into a course topic; `docs/api/courses.md` describes how that upload is started and what differs (the owner is an attachment, not a library item).
 - Videos, movies, podcasts, songs and cover images are stored in private storage, never on the API server. The API owns the records and every check; the client sends the file bytes straight to storage using **temporary links** that the API issues (valid for 1 hour).
 
 ## For the mobile developer: read this first
@@ -235,8 +236,10 @@ Reports what storage already holds, so an app that was closed or lost its state 
 The caller's own unfinished uploads (even for an Admin), newest first. Use it after a restart to offer "Resume":
 
 ```json
-[ { "fileId": "...", "itemId": "...", "folderId": "...", "title": "...", "fileName": "welcome.mp4", "sizeBytes": 148230912, "createdAt": "2026-10-09T09:12:44.318Z" } ]
+[ { "fileId": "...", "itemId": "...", "folderId": "...", "topicId": null, "title": "...", "fileName": "welcome.mp4", "sizeBytes": 148230912, "createdAt": "2026-10-09T09:12:44.318Z" } ]
 ```
+
+Exactly one of `folderId` and `topicId` is set: `folderId` for a library upload, `topicId` (with `folderId` `null`) for a file uploaded into a course topic, whose `itemId` is then the attachment's id.
 
 ### `POST /api/media/uploads/:fileId/complete`
 
@@ -385,3 +388,5 @@ Set in `apps/api/.env`; see `apps/api/.env.example` and `docs/storage.md`. With 
 Three tables (migration `0003`): `files` (one row per stored file; storage keys are random and never contain typed text), `media_folders` and `media_items`. Rows of one item are always locked in the same order, the `media_items` row before its `files` row, so overlapping completions, cancels and cleanups cannot deadlock.
 
 Migration `0004` renamed `media_items.video_file_id` to `media_file_id` and added `audio` to `file_purpose` (audio files have purpose `audio` and keys `audio/<uuid>`).
+
+Migration `0005` (milestone 5) added the course tables and the file purposes `pdf` and `image` (keys `documents/<uuid>` and `images/<uuid>`); they are used only for files attached to topics (`docs/api/courses.md`). A finished upload of either owner is verified, completed, cancelled and cleaned up by the same code.

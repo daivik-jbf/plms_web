@@ -61,3 +61,18 @@ One line per meaningful change, newest last.
 - 2026-10-09: Mounted the docked player in the app shell so it keeps playing while the person browses, with room left at the bottom of every page and above the upload panel.
 - 2026-10-09: Added the Movies, Podcasts and Songs pages: the Videos pages now serve all four categories, and podcasts and songs play in the dock.
 - 2026-10-09: Documented milestone 4 in the media and audit API pages, the storage guide, the README, the architecture notes and the working-memory files.
+
+- 2026-10-12: Added the milestone 5 design spec and implementation plan (Courses, Lessons, Topics and attachments).
+- 2026-10-12: Added migration 0005: courses, lessons, topics and topic attachments, with the `pdf` and `image` file purposes; tested on a database that already holds media and an upload in progress.
+- 2026-10-12: Added the PDF and image kinds to the kinds table, the attachment kind resolver, the `%PDF-` check and the `documents/` and `images/` storage keys.
+- 2026-10-12: Added the courses API: list, create, reorder, the whole tree in one answer, edit and the cover (the cover flow now works for any owner).
+- 2026-10-12: Added lessons and topics: add, rename or edit and reorder, with their audit entries.
+- 2026-10-12: Added the topic with its attachments, attaching a library item (which keeps following it), renaming, reordering and opening an attachment, with `playback.viewed` for PDFs and images.
+- 2026-10-12: Files can be uploaded into a topic with the same engine as the library: the upload routes now work for an attachment as well as a library item.
+- 2026-10-12: Abandoned attachment uploads are cleaned up after 24 hours, and cancel, finish and cleanup are pinned against racing each other.
+- 2026-10-12: Added the Courses link and the course list page.
+- 2026-10-12: Added the course page: an accessible tree, the selected topic, a deep link, a phone Back button and editing the course.
+- 2026-10-12: Added building a course: add lessons and topics, rename, move up and down at every level, and edit a topic's text.
+- 2026-10-12: Added attachments to the topic page: adding from the library, renaming, moving, and opening a video in the pop-up, audio in the dock, a PDF in a new tab and an image in a pop-up.
+- 2026-10-12: Added uploading a file into a topic, with progress and the list of unfinished uploads.
+- 2026-10-12: Documented milestone 5: the courses API page and the media, audit, storage, README, architecture and working-memory files.

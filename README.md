@@ -2,7 +2,7 @@
 
 A web portal (and the backend for the existing mobile app) for managing and playing learning and media content. It is used by the staff of one organization, Jack Brewer Foundation (JBF), who work with a prison population. There are two roles, Admin and Staff, and every sensitive action is written to an append-only audit log.
 
-Milestones 1 to 4 (this repository today) deliver the foundation, the first screens and the first content: project setup, the database, sign-in, email invites, Admin/Staff roles, password reset, the audit-logging foundation, the portal shell, the Staff page, the Audit log page, My account, Videos (folders, resumable uploads of MP4 files up to 2 GB with cover images, and playback), and Movies, Podcasts and Songs (the same folders and uploads, MP3 and M4A up to 500 MB for audio) with a docked audio player. Milestone 3 is built and merged; milestone 4 is built and awaiting approval. The other content features come in later milestones (see `TASKS.md`).
+Milestones 1 to 5 (this repository today) deliver the foundation, the first screens and the first content: project setup, the database, sign-in, email invites, Admin/Staff roles, password reset, the audit-logging foundation, the portal shell, the Staff page, the Audit log page, My account, Videos (folders, resumable uploads of MP4 files up to 2 GB with cover images, and playback), and Movies, Podcasts and Songs (the same folders and uploads, MP3 and M4A up to 500 MB for audio) with a docked audio player, and Courses (lessons, topics, and files attached to a topic by uploading them or picking them from the library). Milestones 3 and 4 are built and merged; milestone 5 is built and awaiting approval. The other content features come in later milestones (see `TASKS.md`).
 
 ## Prerequisites
 
@@ -65,6 +65,7 @@ npm run dev:web    # web portal on http://localhost:5173
 | --- | --- | --- |
 | Dashboard | `/` | Everyone signed in (a welcome page for now; the library arrives in later milestones) |
 | Staff | `/staff` | Admin only. People and Invites tabs: invite someone, resend or cancel an invite, change a role, deactivate or reactivate a person, jump to a person's activity |
+| Courses | `/courses` and `/courses/:courseId` (`?topic=<id>` opens a topic) | Everyone signed in. Create courses, add lessons and topics, rename and reorder at every level (Move up and Move down), give a course a cover and a topic a text, and attach files to a topic: upload a video, audio file, PDF or image (the same resumable upload as the library, with progress and Resume), or pick a ready item from Videos, Movies, Podcasts or Songs (it stays linked, so a later edit shows). Videos open in a pop-up, audio in the bar at the bottom, a PDF in a new browser tab and an image in a pop-up. Nothing can be deleted yet (the Trash arrives in milestone 6) |
 | Videos, Movies, Podcasts, Songs | `/videos`, `/movies`, `/podcasts`, `/songs` and `/<category>/:folderId` | Everyone signed in. Create and rename folders, reorder folders and items, upload (MP4 up to 2 GB for Videos and Movies; MP3 or M4A up to 500 MB for Podcasts and Songs, each with an optional cover) with a progress panel and Resume, edit titles, descriptions and covers. Videos and movies play in a pop-up; podcasts and songs play in a bar at the bottom that keeps playing while you browse. Nothing can be deleted yet (the Trash arrives in milestone 6) |
 | Audit log | `/audit` | Admin only. Everything that has happened, newest first, with filters, a details drawer and CSV export. Opening the page and each export are themselves logged |
 | My account | `/account` | Everyone signed in. Change your password (this signs you out everywhere) or sign out of all devices |
@@ -97,7 +98,8 @@ Full deployment hardening is milestone 7. Until then, keep these in mind:
 - Design and plan for milestone 2: `docs/superpowers/specs/2026-10-08-milestone-2-staff-and-audit-design.md` and `docs/superpowers/plans/2026-10-08-milestone-2-staff-and-audit.md`
 - Design and plan for milestone 3: `docs/superpowers/specs/2026-10-08-milestone-3-videos-design.md` and `docs/superpowers/plans/2026-10-08-milestone-3-videos.md`
 - Design and plan for milestone 4: `docs/superpowers/specs/2026-10-09-milestone-4-media-categories-design.md` and `docs/superpowers/plans/2026-10-09-milestone-4-media-categories.md`
-- API contract for the mobile developer: `docs/api/auth.md` (sign-in, invites, users), `docs/api/audit.md` (audit log) and `docs/api/media.md` (videos, movies, podcasts, songs, uploads, covers, playback)
+- Design and plan for milestone 5: `docs/superpowers/specs/2026-10-09-milestone-5-courses-design.md` and `docs/superpowers/plans/2026-10-09-milestone-5-courses.md`
+- API contract for the mobile developer: `docs/api/auth.md` (sign-in, invites, users), `docs/api/audit.md` (audit log), `docs/api/media.md` (videos, movies, podcasts, songs, uploads, covers, playback) and `docs/api/courses.md` (courses, lessons, topics, attachments)
 - Setting up file storage (Cloudflare R2) and checking it: `docs/storage.md`
 - Architecture summary: `ARCHITECTURE.md`
 - Working memory: `TASKS.md`, `PROGRESS.md`, `DECISIONS.md`, `CHANGELOG.md`

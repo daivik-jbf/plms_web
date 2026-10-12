@@ -1,6 +1,6 @@
-# JBF LMS API: audit log (milestones 2 to 4)
+# JBF LMS API: audit log (milestones 2 to 5)
 
-This is the hand-written contract for the audit log read side, written from the code (`apps/api/src/audit/`) and its end-to-end tests (`apps/api/test/audit*.e2e-spec.ts`). Authentication, token handling, the error body shape and the rate-limit rules are described in `docs/api/auth.md`; this page only adds what is specific to the audit log. Milestone 3 added 12 actions for folders, videos, uploads and playback (see the table below); the endpoints that write them are described in `docs/api/media.md`. Milestone 4 reuses the media actions for movies, podcasts and songs. A generated OpenAPI document is still planned for milestone 6 (see `PROGRESS.md`).
+This is the hand-written contract for the audit log read side, written from the code (`apps/api/src/audit/`) and its end-to-end tests (`apps/api/test/audit*.e2e-spec.ts`). Authentication, token handling, the error body shape and the rate-limit rules are described in `docs/api/auth.md`; this page only adds what is specific to the audit log. Milestone 3 added 12 actions for folders, videos, uploads and playback (see the table below); the endpoints that write them are described in `docs/api/media.md`. Milestone 4 reuses the media actions for movies, podcasts and songs. Milestone 5 adds 14 actions for courses, lessons, topics and attachments (see the table below); the endpoints that write them are described in `docs/api/courses.md`. A generated OpenAPI document is still planned for milestone 6 (see `PROGRESS.md`).
 
 - Base path: every route starts with `/api`.
 - Access: **Admin only**. No token gives 401 (`Unauthorized`). A Staff token gives 403 (`You do not have permission to do that.`). The server enforces this on all three endpoints; hiding the pages in the web app is only a convenience.
@@ -27,7 +27,7 @@ All parameters are optional. Unknown parameters are ignored. A value that fails 
 | `actorId` | UUID (upper or lower case) | none | Only entries performed by this user |
 | `involving` | UUID (upper or lower case) | none | Entries performed by this user **or** done to this user (the target is a user with this id). Invite targets are not matched, even if the id is the same |
 | `category` | `accounts`, `content`, `files` or `playback` | none | Only entries in this category (see the table below) |
-| `action` | one of the 29 known actions listed below | none | Only entries with exactly this action. Any other value gives 400 `fieldErrors.action` |
+| `action` | one of the 43 known actions listed below | none | Only entries with exactly this action. Any other value gives 400 `fieldErrors.action` |
 | `from` | ISO 8601 date-time with a `Z` or an offset, for example `2026-03-02T00:00:00.000Z`; the year must be 0001 to 9999; up to microsecond precision is kept | none | Only entries at or after this instant (inclusive). A bare date such as `2026-03-02` is rejected, and so is year `0000` (400 `fieldErrors.from`) |
 | `to` | same format and year range as `from` | none | Only entries at or before this instant (inclusive) |
 | `q` | text, trimmed, at most 100 characters | none | Case-insensitive "contains" search over the actor label (the email or typed text), the target label, the action name, and the actor's and target's names. `%` and `_` are matched literally (they are not wildcards). An empty or all-space value is ignored |
@@ -36,7 +36,7 @@ All parameters are optional. Unknown parameters are ignored. A value that fails 
 Notes:
 
 - Filters combine with AND.
-- Known actions: `auth.login.succeeded`, `auth.login.failed`, `auth.logout`, `auth.logout_all`, `auth.refresh.reuse_detected`, `auth.password.changed`, `auth.password.reset_requested`, `auth.password.reset_completed`, `invite.created`, `invite.resent`, `invite.cancelled`, `invite.accepted`, `user.deactivated`, `user.reactivated`, `user.role_changed`, `audit.viewed`, `audit.exported`, `content.folder.created`, `content.folder.renamed`, `content.folder.reordered`, `content.video.added`, `content.video.edited`, `content.video.reordered`, `content.video.cover_set`, `file.upload_started`, `file.upload_completed`, `file.upload_failed`, `file.upload_cancelled`, `playback.played`. The `action` filter accepts only these, even though the log can later contain others (see "Unknown actions").
+- Known actions: `auth.login.succeeded`, `auth.login.failed`, `auth.logout`, `auth.logout_all`, `auth.refresh.reuse_detected`, `auth.password.changed`, `auth.password.reset_requested`, `auth.password.reset_completed`, `invite.created`, `invite.resent`, `invite.cancelled`, `invite.accepted`, `user.deactivated`, `user.reactivated`, `user.role_changed`, `audit.viewed`, `audit.exported`, `content.folder.created`, `content.folder.renamed`, `content.folder.reordered`, `content.video.added`, `content.video.edited`, `content.video.reordered`, `content.video.cover_set`, `file.upload_started`, `file.upload_completed`, `file.upload_failed`, `file.upload_cancelled`, `playback.played`, `content.course.created`, `content.course.edited`, `content.course.reordered`, `content.course.cover_set`, `content.lesson.added`, `content.lesson.renamed`, `content.lesson.reordered`, `content.topic.added`, `content.topic.edited`, `content.topic.reordered`, `content.attachment.added`, `content.attachment.renamed`, `content.attachment.reordered`, `playback.viewed`. The `action` filter accepts only these, even though the log can later contain others (see "Unknown actions").
 - Categories come from the part of the action before the first dot: `content.*` is `content`, `file.*` is `files`, `playback.*` and `download.*` are `playback`, and everything else is `accounts`. The sign-in, invite, user and audit actions are `accounts`; since milestone 3 the folder and video actions are `content`, the upload actions are `files` and `playback.played` is `playback`, so "Changes only" (the default) hides it. Upload failures and cancellations stay visible because they are `files` entries.
 
 ### Response (200)
@@ -64,7 +64,7 @@ Every entry has exactly these 16 fields (`null` where nothing applies):
 | `label` | string | Short human label, for example `Role changed` |
 | `tone` | `change`, `danger`, `warning`, `success` or `neutral` | Suggested styling |
 | `category` | `accounts`, `content`, `files` or `playback` | Category of the action |
-| `target` | object or `null` | What it was done to; `null` when the entry has no target. Fields: `type` (for example `user`, `invite`, `video`, `movie`, `podcast`, `song`, `folder`, `category` or `cover`), `id` (string), `label` (string or `null`), `name` (the user's current name when the target is a user, else `null`) |
+| `target` | object or `null` | What it was done to; `null` when the entry has no target. Fields: `type` (for example `user`, `invite`, `video`, `movie`, `podcast`, `song`, `folder`, `category`, `cover`, `course`, `courses`, `lesson`, `topic` or `attachment`), `id` (string), `label` (string or `null`), `name` (the user's current name when the target is a user, else `null`) |
 | `source` | string | `portal`, `mobile` or `system` |
 | `ip` | string or `null` | Client IP address |
 | `userAgent` | string or `null` | Client user agent |
@@ -149,11 +149,27 @@ The server generates `label`, `tone`, `category` and `summary` for every entry, 
 | `content.video.cover_set` | Cover set | change | content | `<actor> set the cover image of the <noun> <target>` |
 | `file.upload_started` | Upload started | neutral | files | `<actor> started uploading <target>` (metadata: `fileId`, `sizeBytes`, `partCount`) |
 | `file.upload_completed` | Upload finished | success | files | `<actor> finished uploading <target>` |
-| `file.upload_failed` | Upload failed | warning | files | `The upload of <target> failed (<reason>)`. Reasons (from `metadata.reason`): `size_mismatch` is "the file size did not match", `not_mp4` is "the file is not a valid MP4", `not_audio` is "the file is not a valid MP3 or M4A", `bad_image` is "the cover image is not valid", `expired` is "it was not finished within 24 hours"; with no recognised reason: `The upload of <target> failed`. An `expired` entry has no actor (the system cleans up abandoned uploads) |
+| `file.upload_failed` | Upload failed | warning | files | `The upload of <target> failed (<reason>)`. Reasons (from `metadata.reason`): `size_mismatch` is "the file size did not match", `not_mp4` is "the file is not a valid MP4", `not_audio` is "the file is not a valid MP3 or M4A", `not_pdf` is "the file is not a valid PDF", `not_image` is "the file is not a valid JPEG, PNG or WebP image", `bad_image` is "the cover image is not valid", `expired` is "it was not finished within 24 hours"; with no recognised reason: `The upload of <target> failed`. An `expired` entry has no actor (the system cleans up abandoned uploads) |
 | `file.upload_cancelled` | Upload cancelled | neutral | files | `<actor> cancelled the upload of <target>` |
 | `playback.played` | Played | neutral | playback | `<actor> played <target>` (one entry for every playback link issued, including renewals) |
+| `playback.viewed` | Viewed | neutral | playback | `<actor> opened the <kind> '<target>'` (a PDF or an image of a topic; `<kind>` from `metadata.kind`, else `attachment`) |
+| `content.course.created` | Course created | change | content | `<actor> created the course '<target>'` |
+| `content.course.edited` | Course edited | change | content | `<actor> edited the course '<target>'` |
+| `content.course.reordered` | Courses reordered | neutral | content | `<actor> changed the order of the courses` |
+| `content.course.cover_set` | Course cover set | change | content | `<actor> set the cover image of the course '<target>'` |
+| `content.lesson.added` | Lesson added | change | content | `<actor> added the lesson '<target>' to the course '<metadata.courseTitle>'` (without the course when it was not recorded) |
+| `content.lesson.renamed` | Lesson renamed | change | content | `<actor> renamed the lesson from '<before>' to '<after>'` (from `changes.title`; without them: `<actor> renamed the lesson '<target>'`) |
+| `content.lesson.reordered` | Lessons reordered | neutral | content | `<actor> changed the order of the lessons in the course '<target>'` |
+| `content.topic.added` | Topic added | change | content | `<actor> added the topic '<target>' to the lesson '<metadata.lessonTitle>'` (without the lesson when it was not recorded) |
+| `content.topic.edited` | Topic edited | change | content | `<actor> edited the topic '<target>'` |
+| `content.topic.reordered` | Topics reordered | neutral | content | `<actor> changed the order of the topics in the lesson '<target>'` |
+| `content.attachment.added` | Attachment added | change | content | `<actor> added the <kind> '<target>' to the topic '<metadata.topicTitle>'`, for example "Anita Rao added the PDF 'Exit map' to the topic 'Fire exits'" |
+| `content.attachment.renamed` | Attachment renamed | change | content | `<actor> renamed the attachment from '<before>' to '<after>'` (from `changes.title`; without them: `<actor> renamed the attachment '<target>'`) |
+| `content.attachment.reordered` | Attachments reordered | neutral | content | `<actor> changed the order of the attachments in the topic '<target>'` |
 
 `<noun>` is `video`, `movie`, `podcast` or `song` from `metadata.category` (`<nouns>`: `videos`, `movies`, `podcasts`, `songs`). Entries written before milestone 4 have no `metadata.category` and read `video`, as does any unknown value. The labels changed in milestone 4 for old rows too, because labels come from the action name.
+
+`<kind>` in the attachment sentences is `video`, `audio file`, `PDF` or `image` from `metadata.kind`; a missing or unknown kind reads `attachment`. The titles of courses, lessons, topics and attachments are shown between single quotes as plain text. `playback.viewed` is in the `playback` category, so "Changes only" hides it like `playback.played`.
 
 Unknown actions: an action that is not in the table (for example one written by a later milestone) is still returned. `label` is the raw action name, `tone` is `neutral`, `category` follows the prefix rule above, and `summary` is `<actor> performed <action>`. Clients should treat `tone` and `category` as closed sets but never assume `action` is a closed set.
 

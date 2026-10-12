@@ -6,7 +6,7 @@ This guide is for the person who sets up the storage for the JBF Learning Manage
 
 ## 1. What this is for
 
-Videos, movies, podcasts, songs and cover images are not kept on the server. They go to **Cloudflare R2**, a private online storage service (think of a very large, locked filing cabinet that only this system has the key to). A folder in R2 is called a **bucket**.
+Videos, movies, podcasts, songs, the files attached to course topics (videos, audio, PDFs and images) and cover images are not kept on the server. They go to **Cloudflare R2**, a private online storage service (think of a very large, locked filing cabinet that only this system has the key to). A folder in R2 is called a **bucket**.
 
 - The browser sends each file (a video, movie, podcast or song) in pieces (16 MB each) straight to R2, using **temporary links** that the API hands out. A temporary link is a web address that only works for one specific job (for example "upload piece 3 of this video") and stops working after one hour. The file bytes never pass through the API server.
 - Videos, movies, podcasts and songs are played through temporary links as well, and cover images are shown through temporary links.
@@ -98,13 +98,14 @@ The default setting, `STORAGE_DRIVER=local`, keeps files in a folder on the deve
 | --- | --- |
 | Videos and movies | MP4 only (`video/mp4`), 1 byte up to 2 GB (2,147,483,648 bytes). Other formats must be converted first (for example with HandBrake) |
 | Podcasts and songs | MP3 (`audio/mpeg`) or M4A (`audio/mp4`), 1 byte up to 500 MB (524,288,000 bytes). Raw AAC, WAV and FLAC are not accepted |
-| Storage names | Random, never typed text: `videos/<id>` (videos and movies), `audio/<id>` (podcasts and songs), `covers/<id>` |
-| Cover images | JPEG, PNG or WebP, up to 10 MB |
-| Piece size | 16 MB; a 2 GB video is at most 128 pieces and a 500 MB audio file at most 32. Every piece except the last must be at least 5 MB (R2's own rule) |
+| Files attached to course topics | The same video and audio rules, plus PDF (`application/pdf`, up to 50 MB, 52,428,800 bytes) and images (JPEG, PNG or WebP, up to 10 MB) |
+| Storage names | Random, never typed text: `videos/<id>` (videos and movies), `audio/<id>` (podcasts and songs), `documents/<id>` (PDFs), `images/<id>` (images), `covers/<id>` |
+| Cover images | JPEG, PNG or WebP, up to 10 MB (library items and courses) |
+| Piece size | 16 MB; a 2 GB video is at most 128 pieces, a 500 MB audio file at most 32, a 50 MB PDF at most 4 and a 10 MB image 1. Every piece except the last must be at least 5 MB (R2's own rule) |
 | Temporary links | Valid for 1 hour |
 | Unfinished uploads | Removed after 24 hours: an hourly timer inside the API does it, or run `npm run storage:cleanup -w @jbf/api` (it prints `Removed N abandoned uploads.`). Running it twice is harmless |
 
-When an upload is finished the API checks the stored file itself: its size must equal what was declared, its type must match, and its first bytes must look like an MP4 (videos, movies and M4A), an MP3, or a JPEG, PNG or WebP for a cover. A file that fails is discarded and the person is told why.
+When an upload is finished the API checks the stored file itself: its size must equal what was declared, its type must match, and its first bytes must look like an MP4 (videos, movies and M4A), an MP3, a PDF (it starts with `%PDF-`), or a JPEG, PNG or WebP (covers and images). A file that fails is discarded and the person is told why.
 
 ## 7. Security notes
 
