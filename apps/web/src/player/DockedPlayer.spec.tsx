@@ -2,14 +2,15 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
+import { playItem } from '../api/media';
 import type { MockResponse } from '../test/fetch-mock';
 import { mockSession, renderWithSession, STAFF } from '../test/session';
 import { DockedPlayer } from './DockedPlayer';
 import styles from './DockedPlayer.module.css';
 import { type DockTrack, PlayerProvider, usePlayer } from './PlayerContext';
 
-const song: DockTrack = { itemId: 's1', title: 'Morning song', categoryLabel: 'Songs', folderName: 'Road trip', coverUrl: null };
-const podcast: DockTrack = { itemId: 'p1', title: 'Episode 4', categoryLabel: 'Podcasts', folderName: 'Weekly', coverUrl: 'https://cdn.example/cover?sig=1' };
+const song: DockTrack = { link: () => playItem('s1'), title: 'Morning song', place: 'Songs › Road trip', coverUrl: null };
+const podcast: DockTrack = { link: () => playItem('p1'), title: 'Episode 4', place: 'Podcasts › Weekly', coverUrl: 'https://cdn.example/cover?sig=1' };
 const FAILED = 'This could not be played. Please try again later.';
 
 let player: ReturnType<typeof usePlayer>;

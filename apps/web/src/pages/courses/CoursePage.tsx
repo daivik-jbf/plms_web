@@ -79,7 +79,7 @@ function Course({ courseId }: { courseId: string }) {
   }
   if (!tree) return <Skeleton />;
 
-  const inCourse = tree.lessons.some((lesson) => lesson.topics.some((topic) => topic.id === topicId));
+  const lessonOfTopic = tree.lessons.find((lesson) => lesson.topics.some((topic) => topic.id === topicId));
 
   // Every change answers with the whole tree. A change that fails is explained, and the tree is read again in case it moved on.
   async function move(change: () => Promise<CourseTree>) {
@@ -205,8 +205,8 @@ function Course({ courseId }: { courseId: string }) {
               <Button className={styles.back} variant="secondary" size="small" aria-label="Back to the course" onClick={() => setParams({})}>
                 ← Back
               </Button>
-              {inCourse ? (
-                <TopicPanel key={topicId} topicId={topicId} reloadKey={reloadKey} onChanged={() => void load()} />
+              {lessonOfTopic ? (
+                <TopicPanel key={topicId} topicId={topicId} courseTitle={tree.title} lessonTitle={lessonOfTopic.title} reloadKey={reloadKey} onChanged={() => void load()} />
               ) : (
                 <EmptyState title="Topic not found">It may have been moved. Choose another topic in the list.</EmptyState>
               )}

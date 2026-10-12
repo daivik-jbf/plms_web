@@ -1,10 +1,12 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react';
 
 export interface DockTrack {
-  itemId: string;
+  // Asks for a one-hour link to the audio (every link is recorded in the audit log); the bar calls it once per start,
+  // and once more if the audio stops loading.
+  link: () => Promise<{ url: string }>;
   title: string;
-  categoryLabel: string;
-  folderName: string;
+  // Plain text under the title: "Songs › Road trip" for a library item, "Course › Lesson › Topic" for an uploaded attachment.
+  place: string;
   coverUrl: string | null;
 }
 

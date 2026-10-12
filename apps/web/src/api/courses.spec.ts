@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSession, STAFF } from '../test/session';
 import {
   addLesson,
+  addLibraryAttachment,
   addTopic,
   createCourse,
   getCourse,
   getTopic,
   listCourses,
+  openAttachment,
+  renameAttachment,
   renameLesson,
+  reorderAttachments,
   reorderCourses,
   reorderLessons,
   reorderTopics,
@@ -90,6 +94,28 @@ describe('lesson and topic api', () => {
       'POST /api/lessons/l1/topics {"title":"Fire exits"}',
       'PUT /api/lessons/l1/topics/order {"ids":["t2","t1"]}',
       'PATCH /api/topics/t1 {"description":"Words"}',
+    ]);
+  });
+});
+
+describe('attachment api', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it('talks to the attachment endpoints', async () => {
+    const calls: string[] = [];
+    mockSession(STAFF, (url, init) => {
+      calls.push(`${init.method ?? 'GET'} ${url} ${typeof init.body === 'string' ? init.body : ''}`.trim());
+      return { body: {} };
+    });
+    await addLibraryAttachment('t1', 'item-1');
+    await renameAttachment('a1', 'Exit map');
+    await reorderAttachments('t1', ['a2', 'a1']);
+    await openAttachment('a1');
+    expect(calls.filter((call) => /\/api\/(topics|attachments)\//.test(call))).toEqual([
+      'POST /api/topics/t1/attachments/library {"itemId":"item-1"}',
+      'PATCH /api/attachments/a1 {"title":"Exit map"}',
+      'PUT /api/topics/t1/attachments/order {"ids":["a2","a1"]}',
+      'POST /api/attachments/a1/open',
     ]);
   });
 });

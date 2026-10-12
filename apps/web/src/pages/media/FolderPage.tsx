@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, describeError } from '../../api/client';
-import { type Folder, listFolders, listItems, type MediaItem, reorderItems } from '../../api/media';
+import { type Folder, listFolders, listItems, type MediaItem, playItem, reorderItems } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
@@ -13,7 +13,7 @@ import { EditItemDialog } from './EditItemDialog';
 import { ItemsTable } from './ItemsTable';
 import styles from './Media.module.css';
 import { PendingUploads } from './PendingUploads';
-import { PlayerDialog } from './PlayerDialog';
+import { PlayerDialog, type VideoTarget } from './PlayerDialog';
 import { UploadDialog } from './UploadDialog';
 
 type Notice = { tone: 'error' | 'success'; text: string };
@@ -26,7 +26,7 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
   const [items, setItems] = useState<MediaItem[] | null>(null);
   const [missing, setMissing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [playing, setPlaying] = useState<MediaItem | null>(null);
+  const [playing, setPlaying] = useState<VideoTarget | null>(null);
   const [editing, setEditing] = useState<MediaItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -78,11 +78,12 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
   // Videos and movies open the pop-up player. Podcasts and songs play in the docked player, which keeps playing while
   // the person browses; it asks for the playback link itself.
   function onPlay(item: MediaItem) {
+    const link = () => playItem(item.id);
     if (category.kind === 'video') {
-      setPlaying(item);
+      setPlaying({ id: item.id, title: item.title, description: item.description, addedBy: item.createdBy.name, addedAt: item.createdAt, link });
       return;
     }
-    player.play({ itemId: item.id, title: item.title, categoryLabel: category.label, folderName: folder?.name ?? '', coverUrl: item.coverUrl });
+    player.play({ link, title: item.title, place: `${category.label} › ${folder?.name ?? ''}`, coverUrl: item.coverUrl });
   }
 
   if (missing) {
@@ -136,7 +137,7 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
 
       <PendingUploads category={category} folderId={folderId} reloadKey={uploads.finishedCount} onChanged={() => void load()} />
 
-      <PlayerDialog item={playing} onClose={() => setPlaying(null)} />
+      <PlayerDialog video={playing} onClose={() => setPlaying(null)} />
       <UploadDialog open={uploading} category={category} folderId={folderId} onClose={() => setUploading(false)} onStarted={() => void load()} />
       <EditItemDialog
         noun={category.noun}

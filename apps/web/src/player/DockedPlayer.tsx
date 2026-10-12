@@ -1,6 +1,5 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { describeError } from '../api/client';
-import { playItem } from '../api/media';
 import { Button } from '../components/Button';
 import { formatDuration } from '../lib/format';
 import styles from './DockedPlayer.module.css';
@@ -35,12 +34,12 @@ function PlayerBar({ session, onClose }: { session: PlayerSession; onClose: () =
 
   const fetchLink = useCallback(async () => {
     try {
-      setSrc((await playItem(track.itemId)).url);
+      setSrc((await track.link()).url);
       setError(null);
     } catch (caught) {
       setError(describeError(caught));
     }
-  }, [track.itemId]);
+  }, [track]);
 
   useEffect(() => {
     if (requested.current) return;
@@ -162,7 +161,7 @@ function PlayerBar({ session, onClose }: { session: PlayerSession; onClose: () =
         )}
         <div className={styles.text}>
           <p className={styles.title}>{track.title}</p>
-          <p className={styles.place}>{`${track.categoryLabel} › ${track.folderName}`}</p>
+          <p className={styles.place}>{track.place}</p>
         </div>
       </div>
       <div className={styles.transport}>

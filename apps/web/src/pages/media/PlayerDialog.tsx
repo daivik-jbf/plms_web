@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeError } from '../../api/client';
-import { playItem, type MediaItem } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
@@ -10,15 +9,26 @@ import styles from './Media.module.css';
 
 const PLAYBACK_FAILED = 'This video could not be played. Please try again later.';
 
-export function PlayerDialog({ item, onClose }: { item: MediaItem | null; onClose: () => void }) {
+// A video to play in the pop-up: a library item, or a video attached to a topic.
+export interface VideoTarget {
+  id: string;
+  title: string;
+  description: string | null;
+  addedBy: string;
+  addedAt: string;
+  // Asks for a one-hour link (every link is recorded in the audit log).
+  link: () => Promise<{ url: string }>;
+}
+
+export function PlayerDialog({ video, onClose }: { video: VideoTarget | null; onClose: () => void }) {
   return (
-    <Dialog open={item !== null} onClose={onClose} title={item?.title ?? 'Video'}>
-      {item ? <Player item={item} /> : null}
+    <Dialog open={video !== null} onClose={onClose} title={video?.title ?? 'Video'}>
+      {video ? <Player video={video} /> : null}
     </Dialog>
   );
 }
 
-function Player({ item }: { item: MediaItem }) {
+function Player({ video }: { video: VideoTarget }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,18 +40,18 @@ function Player({ item }: { item: MediaItem }) {
 
   const fetchLink = useCallback(async () => {
     try {
-      setSrc((await playItem(item.id)).url);
+      setSrc((await video.link()).url);
       setError(null);
     } catch (caught) {
       setError(describeError(caught));
     }
-  }, [item.id]);
+  }, [video]);
 
   useEffect(() => {
-    if (requestedFor.current === item.id) return;
-    requestedFor.current = item.id;
+    if (requestedFor.current === video.id) return;
+    requestedFor.current = video.id;
     void fetchLink();
-  }, [item.id, fetchLink]);
+  }, [video.id, fetchLink]);
 
   // The link lasts one hour. If the browser fails to read the video (for example the link expired during a long
   // pause) ask once for a new link and carry on from the same position.
@@ -56,11 +66,11 @@ function Player({ item }: { item: MediaItem }) {
   }
 
   function onLoadedMetadata() {
-    const video = videoRef.current;
-    if (!video || resumeAt.current <= 0) return;
-    video.currentTime = resumeAt.current;
+    const element = videoRef.current;
+    if (!element || resumeAt.current <= 0) return;
+    element.currentTime = resumeAt.current;
     resumeAt.current = 0;
-    void video.play().catch(() => undefined);
+    void element.play().catch(() => undefined);
   }
 
   return (
@@ -96,9 +106,9 @@ function Player({ item }: { item: MediaItem }) {
           }}
         />
       )}
-      {item.description ? <p className={styles.description}>{item.description}</p> : null}
+      {video.description ? <p className={styles.description}>{video.description}</p> : null}
       <p className={styles.muted}>
-        Added by {item.createdBy.name} · {formatDate(item.createdAt)}
+        Added by {video.addedBy} · {formatDate(video.addedAt)}
       </p>
     </>
   );

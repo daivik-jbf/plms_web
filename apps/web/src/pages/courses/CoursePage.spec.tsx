@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CourseTree, TopicView } from '../../api/courses';
+import type { CourseTree, TopicDetail } from '../../api/courses';
+import { PlayerProvider } from '../../player/PlayerContext';
 import type { MockResponse } from '../../test/fetch-mock';
 import { LocationProbe, mockSession, renderWithSession, STAFF } from '../../test/session';
 import { CoursePage } from './CoursePage';
@@ -30,14 +31,15 @@ const tree: CourseTree = {
   ],
 };
 
-const topic = (overrides: Partial<TopicView> & { id: string; title: string }): TopicView => ({
+const topic = (overrides: Partial<TopicDetail> & { id: string; title: string }): TopicDetail => ({
   lessonId: 'l1',
   courseId: 'c1',
   description: null,
   position: 0,
+  attachments: [],
   ...overrides,
 });
-const topicsFixture: Record<string, TopicView> = {
+const topicsFixture: Record<string, TopicDetail> = {
   t1: topic({ id: 't1', title: 'Fire exits', description: 'Keep them clear.\nNever lock them.' }),
   t2: topic({ id: 't2', title: '<b>Alarms</b>', position: 1, description: '<script>alert(1)</script>' }),
 };
@@ -102,13 +104,13 @@ function startServer(overrides: Record<string, Override> = {}, course: CourseTre
 
 function renderPage(route = '/courses/c1') {
   return renderWithSession(
-    <>
+    <PlayerProvider>
       <Routes>
         <Route path="/courses/:courseId" element={<CoursePage />} />
         <Route path="/courses" element={<p>The course list</p>} />
       </Routes>
       <LocationProbe />
-    </>,
+    </PlayerProvider>,
     route,
   );
 }

@@ -386,7 +386,7 @@ describe('FolderPage for the other categories', () => {
     const calls = startServer({}, songs, [songFolder], 'songs');
     renderPage('/songs/f1', fakeUploads(), SONGS, player);
     await userEvent.click(await screen.findByRole('button', { name: 'Play Morning song' }));
-    expect(player.play).toHaveBeenCalledWith({ itemId: 's1', title: 'Morning song', categoryLabel: 'Songs', folderName: 'Road trip', coverUrl: null });
+    expect(player.play).toHaveBeenCalledWith({ link: expect.any(Function), title: 'Morning song', place: 'Songs › Road trip', coverUrl: null });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Morning song' })).toBeNull();
     await userEvent.click(screen.getByText('3:05'));

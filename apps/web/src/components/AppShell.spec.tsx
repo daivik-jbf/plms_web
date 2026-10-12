@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { Link, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import type { User } from '../api/auth';
+import { playItem } from '../api/media';
 import { ProtectedRoute } from '../auth/ProtectedRoute';
 import { type DockTrack, usePlayer } from '../player/PlayerContext';
 import { ADMIN, mockSession, renderWithSession, STAFF } from '../test/session';
@@ -119,7 +120,7 @@ describe('AppShell', () => {
   });
 });
 
-const song: DockTrack = { itemId: 's1', title: 'Morning song', categoryLabel: 'Songs', folderName: 'Road trip', coverUrl: null };
+const song: DockTrack = { link: () => playItem('s1'), title: 'Morning song', place: 'Songs › Road trip', coverUrl: null };
 const SONG_LINK = 'https://cdn.example/s1?sig=1';
 
 function PlayProbe() {

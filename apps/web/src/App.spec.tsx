@@ -28,7 +28,7 @@ describe('App routes for the media categories', () => {
   it('opens a course on /courses/:courseId with the topic from the address', async () => {
     mockSession(STAFF, (url) => {
       if (url === '/api/courses/c1') return { body: { id: 'c1', title: 'Fire safety', description: null, position: 0, coverUrl: null, createdBy: { id: 'u1', name: 'Anita Rao' }, createdAt: '2026-10-09T10:00:00Z', lessons: [{ id: 'l1', title: 'Exits', position: 0, topics: [{ id: 't1', title: 'Fire exits', position: 0, attachmentCount: 0 }] }] } };
-      if (url === '/api/topics/t1') return { body: { id: 't1', lessonId: 'l1', courseId: 'c1', title: 'Fire exits', description: null, position: 0 } };
+      if (url === '/api/topics/t1') return { body: { id: 't1', lessonId: 'l1', courseId: 'c1', title: 'Fire exits', description: null, position: 0, attachments: [] } };
       return { status: 404, body: {} };
     });
     renderWithSession(<App />, '/courses/c1?topic=t1');
