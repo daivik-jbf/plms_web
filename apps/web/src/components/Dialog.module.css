@@ -1,6 +1,9 @@
 .dialog {
   width: 100%;
   max-width: min(32rem, calc(100vw - var(--space-8)));
+  /* A length, not the browser's percentage: the panel inherits it, and a percentage of a dialog whose height is
+     automatic is not a height at all (the dialog drew as an empty line). */
+  max-height: calc(100dvh - var(--space-8));
   padding: 0;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
@@ -34,9 +37,14 @@
 .panel {
   display: flex;
   flex-direction: column;
-  /* The panel is as tall as the dialog and no taller, so a long body scrolls inside .body while the header stays. */
-  height: 100%;
+  /* The panel is no taller than the dialog, so a long body scrolls inside .body while the header stays. */
   max-height: inherit;
+}
+
+/* A drawer has a height of its own, so its panel can fill it. */
+.right .panel,
+.left .panel {
+  height: 100%;
 }
 
 .header {
