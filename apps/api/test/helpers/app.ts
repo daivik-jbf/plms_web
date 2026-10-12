@@ -27,7 +27,8 @@ export async function createTestApp() {
   await app.init();
   // Listen once on an ephemeral port. Without this supertest starts a server per request and closes the
   // shared one when any request ends, which breaks requests that are built before an awaited login.
-  await app.listen(0);
+  // On 127.0.0.1 only: supertest reaches the server over IPv4, and the default also binds an IPv6 port that another test could hold.
+  await app.listen(0, '127.0.0.1');
   // Open several pool connections up front so tests that fire requests concurrently do not skew timing
   // by one request waiting on a fresh connection.
   await Promise.all(Array.from({ length: 4 }, () => app.get<Pool>(PG_POOL).query('select 1')));

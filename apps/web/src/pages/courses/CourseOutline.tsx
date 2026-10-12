@@ -1,6 +1,8 @@
 import { type KeyboardEvent, useRef, useState } from 'react';
 import type { LessonNode, TopicSummary } from '../../api/courses';
 import { Button } from '../../components/Button';
+import { MoveButton } from '../../components/MoveButton';
+import { useMoveFocus } from '../../components/use-move-focus';
 import styles from './Courses.module.css';
 
 interface CourseOutlineProps {
@@ -35,6 +37,7 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [lastUsed, setLastUsed] = useState<string | null>(null);
   const elements = useRef(new Map<string, HTMLElement>());
+  const moveFocus = useMoveFocus(busy);
   const entries = visibleEntries(lessons, closed);
   const has = (id: string | null): id is string => id !== null && entries.some((entry) => entry.id === id);
   const tabStop = has(lastUsed) ? lastUsed : has(selectedTopicId) ? selectedTopicId : (entries[0]?.id ?? null);
@@ -112,7 +115,7 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
   };
 
   return (
-    <ul role="tree" aria-label="Course contents" className={styles.tree} onKeyDown={onKeyDown}>
+    <ul role="tree" aria-label="Course contents" className={styles.tree} onKeyDown={onKeyDown} {...moveFocus}>
       {lessons.map((lesson, lessonIndex) => {
         const open = !closed.has(lesson.id);
         const lessonTab = tabStop === lesson.id ? 0 : -1;
@@ -141,19 +144,18 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
                 <Button variant="secondary" size="small" tabIndex={lessonTab} aria-label={`Rename lesson ${lesson.title}`} onClick={() => onRenameLesson(lesson)}>
                   Rename
                 </Button>
-                <Button variant="secondary" size="small" tabIndex={lessonTab} disabled={busy || lessonIndex === 0} aria-label={`Move lesson ${lesson.title} up`} onClick={() => onMoveLesson(lesson, -1)}>
+                <MoveButton moveKey={`lesson:${lesson.id}:up`} label={`Move lesson ${lesson.title} up`} tabIndex={lessonTab} unavailable={busy || lessonIndex === 0} onMove={() => onMoveLesson(lesson, -1)}>
                   ↑
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="small"
+                </MoveButton>
+                <MoveButton
+                  moveKey={`lesson:${lesson.id}:down`}
+                  label={`Move lesson ${lesson.title} down`}
                   tabIndex={lessonTab}
-                  disabled={busy || lessonIndex === lessons.length - 1}
-                  aria-label={`Move lesson ${lesson.title} down`}
-                  onClick={() => onMoveLesson(lesson, 1)}
+                  unavailable={busy || lessonIndex === lessons.length - 1}
+                  onMove={() => onMoveLesson(lesson, 1)}
                 >
                   ↓
-                </Button>
+                </MoveButton>
               </div>
             </div>
             {open ? (
@@ -185,26 +187,24 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
                             <Button variant="secondary" size="small" tabIndex={topicTab} aria-label={`Rename topic ${topic.title}`} onClick={() => onRenameTopic(topic)}>
                               Rename
                             </Button>
-                            <Button
-                              variant="secondary"
-                              size="small"
+                            <MoveButton
+                              moveKey={`topic:${topic.id}:up`}
+                              label={`Move topic ${topic.title} up`}
                               tabIndex={topicTab}
-                              disabled={busy || topicIndex === 0}
-                              aria-label={`Move topic ${topic.title} up`}
-                              onClick={() => onMoveTopic(lesson, topic, -1)}
+                              unavailable={busy || topicIndex === 0}
+                              onMove={() => onMoveTopic(lesson, topic, -1)}
                             >
                               ↑
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="small"
+                            </MoveButton>
+                            <MoveButton
+                              moveKey={`topic:${topic.id}:down`}
+                              label={`Move topic ${topic.title} down`}
                               tabIndex={topicTab}
-                              disabled={busy || topicIndex === lesson.topics.length - 1}
-                              aria-label={`Move topic ${topic.title} down`}
-                              onClick={() => onMoveTopic(lesson, topic, 1)}
+                              unavailable={busy || topicIndex === lesson.topics.length - 1}
+                              onMove={() => onMoveTopic(lesson, topic, 1)}
                             >
                               ↓
-                            </Button>
+                            </MoveButton>
                           </div>
                         </div>
                       </li>

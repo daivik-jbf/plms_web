@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -181,6 +181,40 @@ describe('CoursePage', () => {
     fail = false;
     await userEvent.click(within(panel).getByRole('button', { name: 'Retry' }));
     expect(await screen.findByRole('heading', { level: 2, name: 'Fire exits' })).toBeInTheDocument();
+  });
+
+  describe('on a phone, where one pane is shown at a time', () => {
+    const phone = (matches: boolean) =>
+      vi.stubGlobal('matchMedia', (query: string) => ({ matches, media: query, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+
+    it('moves the keyboard to the topic when one is chosen, and back to it in the list when Back is pressed', async () => {
+      phone(true);
+      startServer();
+      renderPage();
+      const item = await screen.findByRole('treeitem', { name: 'Fire exits' });
+      item.focus();
+      await userEvent.keyboard('{Enter}');
+      await screen.findByRole('heading', { level: 2, name: 'Fire exits' });
+      expect(screen.getByRole('button', { name: 'Back to the course' })).toHaveFocus();
+      await userEvent.keyboard('{Enter}');
+      expect(screen.getByRole('treeitem', { name: 'Fire exits' })).toHaveFocus();
+    });
+
+    it('leaves the keyboard alone where both panes are shown, and when a topic is already open on arrival', async () => {
+      phone(false);
+      startServer();
+      renderPage();
+      const item = await screen.findByRole('treeitem', { name: 'Fire exits' });
+      item.focus();
+      await userEvent.keyboard('{Enter}');
+      await screen.findByRole('heading', { level: 2, name: 'Fire exits' });
+      expect(item).toHaveFocus();
+      cleanup();
+      phone(true);
+      renderPage('/courses/c1?topic=t1');
+      await screen.findByRole('heading', { level: 2, name: 'Fire exits' });
+      expect(screen.getByRole('button', { name: 'Back to the course' })).not.toHaveFocus();
+    });
   });
 
   it('tells a phone which pane to show and has a Back button that clears the topic', async () => {
@@ -424,7 +458,7 @@ describe('CoursePage: building the course', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Move lesson Exits down' }));
     await waitFor(() => expect(lessonsInTree().map((item) => item.getAttribute('aria-label'))).toEqual(['Equipment', 'Exits']));
     expect(calls.find((call) => call.key === 'PUT /api/courses/c1/lessons/order')?.body).toEqual({ ids: ['l2', 'l1'] });
-    expect(screen.getByRole('button', { name: 'Move lesson Equipment up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move lesson Equipment up' })).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('moves a topic up inside its lesson and sends only that lesson\'s order', async () => {

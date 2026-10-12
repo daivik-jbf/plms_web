@@ -183,17 +183,60 @@ describe('CourseOutline row actions', () => {
 
   it('disables the moves that are not possible at each level, and every move while a request runs', () => {
     const { unmount } = setup();
-    expect(screen.getByRole('button', { name: 'Move lesson Exits up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move lesson Exits down' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Move lesson <b>Equipment</b> down' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move topic Fire exits up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move topic Fire exits down' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Move topic Alarms down' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move topic <img src=x onerror=alert(1)> up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move topic <img src=x onerror=alert(1)> down' })).toBeDisabled();
+    // aria-disabled, not disabled: a button that is switched off would drop the keyboard's place.
+    const off = (name: string) => expect(screen.getByRole('button', { name })).toHaveAttribute('aria-disabled', 'true');
+    const on = (name: string) => expect(screen.getByRole('button', { name })).not.toHaveAttribute('aria-disabled');
+    off('Move lesson Exits up');
+    on('Move lesson Exits down');
+    off('Move lesson <b>Equipment</b> down');
+    off('Move topic Fire exits up');
+    on('Move topic Fire exits down');
+    off('Move topic Alarms down');
+    off('Move topic <img src=x onerror=alert(1)> up');
+    off('Move topic <img src=x onerror=alert(1)> down');
     unmount();
     setup(null, true);
-    for (const button of screen.getAllByRole('button', { name: /^Move / })) expect(button).toBeDisabled();
+    for (const button of screen.getAllByRole('button', { name: /^Move / })) expect(button).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does nothing when a move that is not possible, or one while a request runs, is pressed', async () => {
+    const first = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Move lesson Exits up' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Move topic Alarms down' }));
+    expect(first.onMoveLesson).not.toHaveBeenCalled();
+    expect(first.onMoveTopic).not.toHaveBeenCalled();
+    first.unmount();
+    const second = setup(null, true);
+    await userEvent.click(screen.getByRole('button', { name: 'Move lesson Exits down' }));
+    expect(second.onMoveLesson).not.toHaveBeenCalled();
+  });
+
+  it('keeps the keyboard on the Move button that was pressed while the row moves', async () => {
+    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onRenameLesson: vi.fn(), onRenameTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
+    const view = render(<CourseOutline lessons={lessons} selectedTopicId={null} busy={false} {...handlers} />);
+    const button = screen.getByRole('button', { name: 'Move lesson Exits down' });
+    button.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(handlers.onMoveLesson).toHaveBeenCalledTimes(1);
+    view.rerender(<CourseOutline lessons={lessons} selectedTopicId={null} busy={true} {...handlers} />);
+    expect(screen.getByRole('button', { name: 'Move lesson Exits down' })).toHaveFocus();
+    // A browser drops the focus of an element that is moved in the page; the row is moved when the new order arrives.
+    screen.getByRole('button', { name: 'Move lesson Exits down' }).blur();
+    const swapped = [lessons[1]!, lessons[0]!, lessons[2]!];
+    view.rerender(<CourseOutline lessons={swapped} selectedTopicId={null} busy={false} {...handlers} />);
+    expect(screen.getByRole('button', { name: 'Move lesson Exits down' })).toHaveFocus();
+  });
+
+  it('does not take the keyboard back from somewhere else it has gone since', async () => {
+    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onRenameLesson: vi.fn(), onRenameTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
+    const view = render(<CourseOutline lessons={lessons} selectedTopicId={null} busy={false} {...handlers} />);
+    screen.getByRole('button', { name: 'Move lesson Exits down' }).focus();
+    await userEvent.keyboard('{Enter}');
+    view.rerender(<CourseOutline lessons={lessons} selectedTopicId={null} busy={true} {...handlers} />);
+    const elsewhere = screen.getByRole('button', { name: 'Rename lesson Empty lesson' });
+    elsewhere.focus();
+    view.rerender(<CourseOutline lessons={[lessons[1]!, lessons[0]!, lessons[2]!]} selectedTopicId={null} busy={false} {...handlers} />);
+    expect(elsewhere).toHaveFocus();
   });
 
   it('reports each action with the row it belongs to', async () => {

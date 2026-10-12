@@ -4,9 +4,11 @@ import { describeError } from '../../api/client';
 import { type CourseSummary, listCourses, reorderCourses } from '../../api/courses';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
+import { MoveButton } from '../../components/MoveButton';
 import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
 import { Table } from '../../components/Table';
+import { useMoveFocus } from '../../components/use-move-focus';
 import media from '../media/Media.module.css';
 import { CourseDialog, type CourseDialogMode } from './CourseDialog';
 
@@ -18,6 +20,7 @@ export function CoursesPage() {
   const [dialog, setDialog] = useState<CourseDialogMode | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const moveFocus = useMoveFocus(busy);
 
   const load = useCallback(async () => {
     try {
@@ -82,6 +85,7 @@ export function CoursesPage() {
       ) : courses.length === 0 ? (
         <EmptyState title="No courses yet">Create a course to start adding lessons, topics and files.</EmptyState>
       ) : (
+        <div {...moveFocus}>
         <Table caption="Courses">
           <thead>
             <tr>
@@ -118,24 +122,19 @@ export function CoursesPage() {
                     <Button variant="secondary" size="small" disabled={busy} aria-label={`Rename ${course.title}`} onClick={() => setDialog({ kind: 'rename', course })}>
                       Rename
                     </Button>
-                    <Button variant="secondary" size="small" disabled={busy || index === 0} aria-label={`Move ${course.title} up`} onClick={() => void move(index, -1)}>
+                    <MoveButton moveKey={`${course.id}:up`} label={`Move ${course.title} up`} unavailable={busy || index === 0} onMove={() => void move(index, -1)}>
                       ↑ Move up
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      disabled={busy || index === courses.length - 1}
-                      aria-label={`Move ${course.title} down`}
-                      onClick={() => void move(index, 1)}
-                    >
+                    </MoveButton>
+                    <MoveButton moveKey={`${course.id}:down`} label={`Move ${course.title} down`} unavailable={busy || index === courses.length - 1} onMove={() => void move(index, 1)}>
                       ↓ Move down
-                    </Button>
+                    </MoveButton>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </Table>
+        </div>
       )}
 
       <CourseDialog mode={dialog} onClose={() => setDialog(null)} onSaved={onSaved} />

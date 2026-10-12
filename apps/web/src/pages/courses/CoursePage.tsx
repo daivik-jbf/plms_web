@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, describeError } from '../../api/client';
 import { addLesson, addTopic, type CourseTree, getCourse, type LessonNode, renameLesson, reorderLessons, reorderTopics, type TopicSummary, updateTopic } from '../../api/courses';
@@ -53,6 +53,23 @@ function Course({ courseId }: { courseId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Where one pane is shown at a time (the same width as in Courses.module.css) the pane that had the keyboard is hidden
+  // when the other is shown, so the keyboard is taken along: to Back when a topic opens, to that topic in the list on Back.
+  const treePane = useRef<HTMLElement>(null);
+  const topicPane = useRef<HTMLElement>(null);
+  const shownTopic = useRef(topicId);
+  useEffect(() => {
+    const before = shownTopic.current;
+    shownTopic.current = topicId;
+    if (before === topicId || !window.matchMedia?.('(max-width: 760px)').matches) return;
+    if (topicId) {
+      topicPane.current?.querySelector<HTMLElement>(`.${styles.back}`)?.focus();
+    } else if (before) {
+      const items = Array.from(treePane.current?.querySelectorAll<HTMLElement>('[role="treeitem"]') ?? []);
+      (items.find((item) => item.dataset.id === before) ?? items.find((item) => item.tabIndex === 0))?.focus();
+    }
+  }, [topicId]);
 
   if (missing) {
     return (
@@ -155,7 +172,7 @@ function Course({ courseId }: { courseId: string }) {
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
 
       <div className={styles.panes} data-view={topicId ? 'topic' : 'tree'}>
-        <section className={styles.treePane} aria-label="Lessons and topics">
+        <section ref={treePane} className={styles.treePane} aria-label="Lessons and topics">
           <div className={styles.treeHeader}>
             <Button size="small" onClick={() => setTitleMode({ kind: 'add-lesson' })}>
               Add lesson
@@ -199,7 +216,7 @@ function Course({ courseId }: { courseId: string }) {
             />
           )}
         </section>
-        <section className={styles.topicPane} aria-label="Selected topic">
+        <section ref={topicPane} className={styles.topicPane} aria-label="Selected topic">
           {topicId ? (
             <>
               <Button className={styles.back} variant="secondary" size="small" aria-label="Back to the course" onClick={() => setParams({})}>

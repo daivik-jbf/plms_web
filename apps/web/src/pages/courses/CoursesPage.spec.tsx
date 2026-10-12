@@ -172,10 +172,10 @@ describe('CoursesPage', () => {
     const calls = startServer();
     renderWithSession(<CoursesPage />);
     await screen.findByRole('table', { name: 'Courses' });
-    expect(screen.getByRole('button', { name: 'Move Fire safety up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move <img src=x onerror=alert(1)> down' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Fire safety up' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Move <img src=x onerror=alert(1)> down' })).toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(screen.getByRole('button', { name: 'Move Fire safety down' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Fire safety up' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Fire safety up' })).not.toHaveAttribute('aria-disabled'));
     expect(calls.find((call) => call.key === 'PUT /api/courses/order')?.body).toEqual({ ids: ['c2', 'c1', 'c3'] });
     const rows = within(screen.getByRole('table', { name: 'Courses' })).getAllByRole('row').slice(1);
     expect(within(rows[0] as HTMLElement).getByRole('link', { name: 'Open First aid' })).toBeInTheDocument();

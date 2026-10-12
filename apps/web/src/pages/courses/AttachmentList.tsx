@@ -1,7 +1,9 @@
 import type { Attachment, AttachmentKind } from '../../api/courses';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
+import { MoveButton } from '../../components/MoveButton';
 import { Table } from '../../components/Table';
+import { useMoveFocus } from '../../components/use-move-focus';
 import { formatBytes, formatDuration } from '../../lib/format';
 import { CATEGORIES } from '../../media/categories';
 import media from '../media/Media.module.css';
@@ -28,9 +30,11 @@ function sourceText(attachment: Attachment): string | null {
 
 export function AttachmentList({ attachments, busy, progress, onOpen, onRename, onMove }: AttachmentListProps) {
   // Only ready attachments can be ordered; one that is still uploading keeps its place until it finishes.
+  const moveFocus = useMoveFocus(busy);
   const ready = attachments.filter((attachment) => attachment.status === 'ready');
 
   return (
+    <div {...moveFocus}>
     <Table caption="Attachments">
       <thead>
         <tr>
@@ -77,18 +81,12 @@ export function AttachmentList({ attachments, busy, progress, onOpen, onRename, 
                     <Button variant="secondary" size="small" disabled={busy} aria-label={`Rename ${attachment.title}`} onClick={() => onRename(attachment)}>
                       Rename
                     </Button>
-                    <Button variant="secondary" size="small" disabled={busy || readyIndex === 0} aria-label={`Move ${attachment.title} up`} onClick={() => onMove(attachment, -1)}>
+                    <MoveButton moveKey={`${attachment.id}:up`} label={`Move ${attachment.title} up`} unavailable={busy || readyIndex === 0} onMove={() => onMove(attachment, -1)}>
                       ↑ Move up
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      disabled={busy || readyIndex === ready.length - 1}
-                      aria-label={`Move ${attachment.title} down`}
-                      onClick={() => onMove(attachment, 1)}
-                    >
+                    </MoveButton>
+                    <MoveButton moveKey={`${attachment.id}:down`} label={`Move ${attachment.title} down`} unavailable={busy || readyIndex === ready.length - 1} onMove={() => onMove(attachment, 1)}>
                       ↓ Move down
-                    </Button>
+                    </MoveButton>
                   </div>
                 ) : null}
               </td>
@@ -97,5 +95,6 @@ export function AttachmentList({ attachments, busy, progress, onOpen, onRename, 
         })}
       </tbody>
     </Table>
+    </div>
   );
 }

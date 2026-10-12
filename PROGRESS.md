@@ -59,7 +59,7 @@ Last updated: 2026-10-12
 - API (`docs/api/courses.md`): the tree in one answer, edits, exact reorders (409 otherwise), the cover for courses, topic detail, library attachments, uploads into a topic (the existing `/api/media/uploads/...` routes), opening an attachment (one-hour link, audited). Cancel, finish and the 24-hour cleanup work for attachments exactly as for library items.
 - Audit: 14 new actions (`content.course.*`, `content.lesson.*`, `content.topic.*`, `content.attachment.*`, `playback.viewed`) with sentences such as "Anita Rao added the PDF 'Exit map' to the topic 'Fire exits'".
 - Web: Courses first in the sidebar, the course list, the two-pane course page (an accessible tree with arrow keys, the topic, a deep link `?topic=`, a Back button on a phone), building the course, the attachment list with the library picker and the upload dialog, and the four ways to open an attachment (video pop-up, audio in the dock, PDF in a new tab, image pop-up).
-- Tests at the end of the build: 867 API tests (59 suites) and 531 web tests (46 files), all passing. Lint and both builds are clean.
+- Tests at the end of the build: 867 API tests (59 suites) and 536 web tests (46 files), all passing. Lint and both builds are clean.
 
 ## In progress
 

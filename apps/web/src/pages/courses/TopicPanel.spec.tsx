@@ -226,7 +226,7 @@ describe('TopicPanel attachments', () => {
     const unfinished = await screen.findByRole('row', { name: /Half a map/ });
     expect(within(unfinished).getByText('Uploading')).toBeInTheDocument();
     expect(within(unfinished).queryByRole('button')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Move Exit map down' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Exit map down' })).toHaveAttribute('aria-disabled', 'true');
   });
 
   describe('opening', () => {
@@ -358,10 +358,10 @@ describe('TopicPanel attachments', () => {
       const calls = startServer(topic([...fixture.slice(0, 2), attachment({ id: 'a9', title: 'Unfinished', status: 'uploading', position: 2 })]));
       renderPanel();
       await screen.findByRole('table', { name: 'Attachments' });
-      expect(screen.getByRole('button', { name: 'Move Exit map up' })).toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Move Safety briefing down' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Move Exit map up' })).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('button', { name: 'Move Safety briefing down' })).toHaveAttribute('aria-disabled', 'true');
       await userEvent.click(screen.getByRole('button', { name: 'Move Exit map down' }));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Move Exit map up' })).toBeEnabled());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Move Exit map up' })).not.toHaveAttribute('aria-disabled'));
       expect(calls.find((call) => call.key === 'PUT /api/topics/t1/attachments/order')?.body).toEqual({ ids: ['a2', 'a1'] });
       const rows = within(screen.getByRole('table', { name: 'Attachments' })).getAllByRole('row').slice(1);
       expect(rows[0]).toHaveTextContent('Safety briefing');
