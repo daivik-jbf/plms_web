@@ -46,7 +46,7 @@ describe('topics', () => {
         .send({ title: '  Fire exits ', description: '  Keep them clear.\nNever lock them.  ' })
         .expect(201);
       expect(first.body.id).toBe(course.id);
-      expect(first.body.lessons[0].topics).toEqual([{ id: expect.any(String), title: 'Fire exits', position: 0, attachmentCount: 0 }]);
+      expect(first.body.lessons[0].topics).toEqual([{ id: expect.any(String), title: 'Fire exits', position: 0, coverUrl: null, attachmentCount: 0 }]);
       const second = await addTopicViaApi(app, owner.session, lesson.id, { title: 'Alarms' });
       expect(second.lessons[0].topics.map((topic) => [topic.title, topic.position])).toEqual([
         ['Fire exits', 0],
@@ -133,7 +133,7 @@ describe('topics', () => {
         .set(...bearer(owner.session))
         .send({ title: '  New title ', description: '  After\nlines ' })
         .expect(200);
-      expect(res.body).toEqual({ id: topic.id, lessonId: lesson.id, courseId: course.id, title: 'New title', description: 'After\nlines', position: 0 });
+      expect(res.body).toEqual({ id: topic.id, lessonId: lesson.id, courseId: course.id, title: 'New title', description: 'After\nlines', position: 0, coverUrl: null });
       const [entry] = await auditFor('content.topic.edited', topic.id);
       expect(entry).toMatchObject({
         actorId: owner.user.id,

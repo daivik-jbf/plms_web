@@ -1,6 +1,7 @@
 import { type KeyboardEvent, useRef, useState } from 'react';
 import type { LessonNode, TopicSummary } from '../../api/courses';
 import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
 import { MoveButton } from '../../components/MoveButton';
 import { useMoveFocus } from '../../components/use-move-focus';
 import styles from './Courses.module.css';
@@ -13,9 +14,13 @@ interface CourseOutlineProps {
   onSelectTopic: (topicId: string) => void;
   onAddTopic: (lesson: LessonNode) => void;
   onRenameLesson: (lesson: LessonNode) => void;
-  onRenameTopic: (topic: TopicSummary) => void;
+  onEditTopic: (topic: TopicSummary) => void;
   onMoveLesson: (lesson: LessonNode, delta: -1 | 1) => void;
   onMoveTopic: (lesson: LessonNode, topic: TopicSummary, delta: -1 | 1) => void;
+  // Given only to Admins: the trash button appears on a row when its handler is given.
+  onCoverLesson?: (lesson: LessonNode) => void;
+  onDeleteLesson?: (lesson: LessonNode) => void;
+  onDeleteTopic?: (topic: TopicSummary) => void;
 }
 
 type Entry = { kind: 'lesson'; id: string; lesson: LessonNode } | { kind: 'topic'; id: string; lessonId: string };
@@ -33,7 +38,7 @@ function visibleEntries(lessons: LessonNode[], closed: ReadonlySet<string>): Ent
 
 // An accessible tree (the WAI-ARIA tree pattern): one item is reachable with Tab, the arrow keys do the rest, and the
 // state of every lesson is announced through aria-expanded. The buttons of a row are reached with Tab from that row.
-export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, onAddTopic, onRenameLesson, onRenameTopic, onMoveLesson, onMoveTopic }: CourseOutlineProps) {
+export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, onAddTopic, onRenameLesson, onEditTopic, onMoveLesson, onMoveTopic, onCoverLesson, onDeleteLesson, onDeleteTopic }: CourseOutlineProps) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [lastUsed, setLastUsed] = useState<string | null>(null);
   const elements = useRef(new Map<string, HTMLElement>());
@@ -134,28 +139,43 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
           >
             <div className={styles.row}>
               <span className={`${styles.label} ${styles.lessonLabel}`} onClick={() => toggle(lesson.id, !open)}>
-                <span aria-hidden="true">{open ? '▾ ' : '▸ '}</span>
+                <span aria-hidden="true" className={open ? `${styles.twisty} ${styles.twistyOpen}` : styles.twisty}>
+                  <Icon name="chevron" size={16} />
+                </span>
+                {lesson.coverUrl ? <img className={styles.thumb} src={lesson.coverUrl} alt="" loading="lazy" /> : null}
                 {lesson.title}
               </span>
               <div className={styles.actions}>
-                <Button variant="secondary" size="small" tabIndex={lessonTab} aria-label={`Add a topic to ${lesson.title}`} onClick={() => onAddTopic(lesson)}>
+                <Button variant="secondary" size="small" className={styles.addTopic} tabIndex={lessonTab} aria-label={`Add a topic to ${lesson.title}`} onClick={() => onAddTopic(lesson)}>
+                  <Icon name="plus" size={16} />
                   Add topic
                 </Button>
-                <Button variant="secondary" size="small" tabIndex={lessonTab} aria-label={`Rename lesson ${lesson.title}`} onClick={() => onRenameLesson(lesson)}>
-                  Rename
+                <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={lessonTab} aria-label={`Rename lesson ${lesson.title}`} title="Rename" onClick={() => onRenameLesson(lesson)}>
+                  <Icon name="edit" size={16} />
                 </Button>
-                <MoveButton moveKey={`lesson:${lesson.id}:up`} label={`Move lesson ${lesson.title} up`} tabIndex={lessonTab} unavailable={busy || lessonIndex === 0} onMove={() => onMoveLesson(lesson, -1)}>
-                  ↑
+                <MoveButton className={styles.iconButton} moveKey={`lesson:${lesson.id}:up`} label={`Move lesson ${lesson.title} up`} tabIndex={lessonTab} unavailable={busy || lessonIndex === 0} onMove={() => onMoveLesson(lesson, -1)}>
+                  <Icon name="up" size={16} />
                 </MoveButton>
                 <MoveButton
+                  className={styles.iconButton}
                   moveKey={`lesson:${lesson.id}:down`}
                   label={`Move lesson ${lesson.title} down`}
                   tabIndex={lessonTab}
                   unavailable={busy || lessonIndex === lessons.length - 1}
                   onMove={() => onMoveLesson(lesson, 1)}
                 >
-                  ↓
+                  <Icon name="down" size={16} />
                 </MoveButton>
+                {onCoverLesson ? (
+                  <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={lessonTab} aria-label={`Change the cover of lesson ${lesson.title}`} title="Cover" disabled={busy} onClick={() => onCoverLesson(lesson)}>
+                    <Icon name="image" size={16} />
+                  </Button>
+                ) : null}
+                {onDeleteLesson ? (
+                  <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={lessonTab} aria-label={`Delete lesson ${lesson.title}`} title="Delete" disabled={busy} onClick={() => onDeleteLesson(lesson)}>
+                    <Icon name="trash" size={16} />
+                  </Button>
+                ) : null}
               </div>
             </div>
             {open ? (
@@ -180,31 +200,39 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
                       >
                         <div className={styles.row}>
                           <span className={styles.label} onClick={() => onSelectTopic(topic.id)}>
+                            {topic.coverUrl ? <img className={styles.thumb} src={topic.coverUrl} alt="" loading="lazy" /> : null}
                             {topic.title}
                           </span>
                           <span className={styles.count}>{filesText(topic)}</span>
                           <div className={styles.actions}>
-                            <Button variant="secondary" size="small" tabIndex={topicTab} aria-label={`Rename topic ${topic.title}`} onClick={() => onRenameTopic(topic)}>
-                              Rename
+                            <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={topicTab} aria-label={`Edit topic ${topic.title}`} title="Edit topic" onClick={() => onEditTopic(topic)}>
+                              <Icon name="edit" size={16} />
                             </Button>
                             <MoveButton
+                              className={styles.iconButton}
                               moveKey={`topic:${topic.id}:up`}
                               label={`Move topic ${topic.title} up`}
                               tabIndex={topicTab}
                               unavailable={busy || topicIndex === 0}
                               onMove={() => onMoveTopic(lesson, topic, -1)}
                             >
-                              ↑
+                              <Icon name="up" size={16} />
                             </MoveButton>
                             <MoveButton
+                              className={styles.iconButton}
                               moveKey={`topic:${topic.id}:down`}
                               label={`Move topic ${topic.title} down`}
                               tabIndex={topicTab}
                               unavailable={busy || topicIndex === lesson.topics.length - 1}
                               onMove={() => onMoveTopic(lesson, topic, 1)}
                             >
-                              ↓
+                              <Icon name="down" size={16} />
                             </MoveButton>
+                            {onDeleteTopic ? (
+                              <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={topicTab} aria-label={`Delete topic ${topic.title}`} title="Delete" disabled={busy} onClick={() => onDeleteTopic(topic)}>
+                                <Icon name="trash" size={16} />
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
                       </li>

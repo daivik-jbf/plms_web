@@ -57,9 +57,10 @@ describe('CategoryPage', () => {
   it('lists the folders with their video counts and an Open link to each', async () => {
     startServer();
     renderWithSession(<CategoryPage category={VIDEOS} />);
-    const table = await screen.findByRole('table', { name: 'Video folders' });
-    const row = within(table).getByRole('row', { name: /Safety Training/ });
-    expect(within(row).getByText('4')).toBeInTheDocument();
+    const list = await screen.findByRole('list', { name: 'Video folders' });
+    const row = within(list).getAllByRole('listitem')[0] as HTMLElement;
+    expect(row).toHaveTextContent('Safety Training');
+    expect(row).toHaveTextContent('4 videos');
     expect(within(row).getByRole('link', { name: 'Open Safety Training' })).toHaveAttribute('href', '/videos/f1');
   });
 
@@ -84,7 +85,7 @@ describe('CategoryPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
     fail = false;
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByRole('table', { name: 'Video folders' })).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Video folders' })).toBeInTheDocument();
   });
 
   it('creates a folder and shows it', async () => {
@@ -136,13 +137,13 @@ describe('CategoryPage', () => {
   it('moves a folder down and disables the moves that are not possible', async () => {
     const calls = startServer();
     renderWithSession(<CategoryPage category={VIDEOS} />);
-    await screen.findByRole('table', { name: 'Video folders' });
-    expect(screen.getByRole('button', { name: 'Move Safety Training up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move <img src=x onerror=alert(1)> down' })).toBeDisabled();
+    await screen.findByRole('list', { name: 'Video folders' });
+    expect(screen.getByRole('button', { name: 'Move Safety Training up' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Move <img src=x onerror=alert(1)> down' })).toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(screen.getByRole('button', { name: 'Move Safety Training down' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Safety Training up' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Safety Training up' })).not.toHaveAttribute('aria-disabled'));
     expect(calls.find((call) => call.key === 'PUT /api/media/videos/folders/order')?.body).toEqual({ ids: ['f2', 'f1', 'f3'] });
-    const rows = within(screen.getByRole('table', { name: 'Video folders' })).getAllByRole('row').slice(1);
+    const rows = within(screen.getByRole('list', { name: 'Video folders' })).getAllByRole('listitem');
     expect(within(rows[0] as HTMLElement).getByRole('link', { name: 'Open Kitchen' })).toBeInTheDocument();
   });
 
@@ -161,9 +162,9 @@ describe('CategoryPage', () => {
     const calls = startServer({}, songs, 'songs');
     renderWithSession(<CategoryPage category={SONGS} />);
     expect(await screen.findByRole('heading', { level: 1, name: 'Songs' })).toBeInTheDocument();
-    const table = screen.getByRole('table', { name: 'Song folders' });
-    expect(within(table).getByRole('columnheader', { name: 'Songs' })).toBeInTheDocument();
-    expect(within(table).getByRole('link', { name: 'Open Road trip' })).toHaveAttribute('href', '/songs/s1');
+    const list = screen.getByRole('list', { name: 'Song folders' });
+    expect(within(list).getByText('2 songs')).toBeInTheDocument();
+    expect(within(list).getByRole('link', { name: 'Open Road trip' })).toHaveAttribute('href', '/songs/s1');
     await userEvent.click(screen.getByRole('button', { name: 'Move Road trip down' }));
     await waitFor(() => expect(calls.find((call) => call.key === 'PUT /api/media/songs/folders/order')?.body).toEqual({ ids: ['s2', 's1'] }));
     await userEvent.click(screen.getByRole('button', { name: 'New folder' }));

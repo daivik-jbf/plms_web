@@ -3,9 +3,10 @@ import { ApiError, describeError } from '../../api/client';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import { readDuration } from '../../uploads/duration';
-import { ATTACHMENT_ACCEPT, checkAttachmentFile } from '../../uploads/limits';
+import { ATTACHMENT_ACCEPT, checkAttachmentFile, checkCoverFile } from '../../uploads/limits';
 import { useUploads } from '../../uploads/UploadsContext';
 import media from '../media/Media.module.css';
 
@@ -26,7 +27,7 @@ export function AttachmentUploadDialog({ open, topicId, onClose, onStarted }: At
   );
 }
 
-type Field = 'file' | 'title';
+type Field = 'file' | 'title' | 'description' | 'cover';
 type Errors = Partial<Record<Field, string>>;
 
 function UploadForm({
@@ -39,8 +40,11 @@ function UploadForm({
   const uploads = useUploads();
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
+  const [cover, setCover] = useState<File | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const titleTouched = useRef(false);
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -50,7 +54,7 @@ function UploadForm({
 
   useEffect(() => {
     if (!focusRequest) return;
-    (focusRequest.field === 'file' ? fileRef : titleRef).current?.focus();
+    (focusRequest.field === 'file' ? fileRef : focusRequest.field === 'cover' ? coverRef : titleRef).current?.focus();
   }, [focusRequest]);
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -71,16 +75,17 @@ function UploadForm({
     const next: Errors = {
       file: check === null ? 'Choose a file.' : check.ok ? undefined : check.problem,
       title: title.trim() ? undefined : 'Enter a title.',
+      cover: cover ? (checkCoverFile(cover) ?? undefined) : undefined,
     };
     setErrors(next);
-    const first = (['file', 'title'] as const).find((field) => next[field]);
+    const first = (['file', 'title', 'cover'] as const).find((field) => next[field]);
     if (first || !file || !check || !check.ok) {
       setFocusRequest({ field: first ?? 'file' });
       return;
     }
     setBusy(true);
     try {
-      await uploads.start({ file, topicId, contentType: check.contentType, title: title.trim(), durationSeconds: await duration.current });
+      await uploads.start({ file, topicId, contentType: check.contentType, title: title.trim(), durationSeconds: await duration.current, description: description.trim(), cover });
       onStarted();
       onClose();
     } catch (caught) {
@@ -88,8 +93,9 @@ function UploadForm({
       const fromServer: Errors = {
         file: (fields.sizeBytes ?? fields.contentType ?? fields.fileName)?.join(' '),
         title: fields.title?.join(' '),
+        description: fields.description?.join(' '),
       };
-      if (fromServer.file || fromServer.title) {
+      if (fromServer.file || fromServer.title || fromServer.description) {
         setErrors(fromServer);
         setFocusRequest({ field: fromServer.file ? 'file' : 'title' });
       } else {
@@ -124,6 +130,24 @@ function UploadForm({
           setTitle(e.target.value);
         }}
         error={errors.title}
+      />
+      <TextArea
+        label="Description"
+        rows={4}
+        maxLength={2000}
+        hint="Optional. Plain text. Line breaks are kept."
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        error={errors.description}
+      />
+      <TextField
+        ref={coverRef}
+        label="Cover image"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hint="Optional. A picture shown with the file. JPEG, PNG or WebP, up to 10 MB."
+        onChange={(e) => setCover(e.target.files?.[0] ?? null)}
+        error={errors.cover}
       />
       <div className={media.dialogActions}>
         <Button variant="secondary" onClick={onClose} disabled={busy}>

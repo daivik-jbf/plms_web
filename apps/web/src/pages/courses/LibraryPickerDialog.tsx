@@ -8,6 +8,7 @@ import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Select } from '../../components/Select';
 import { Skeleton } from '../../components/Skeleton';
+import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import { formatDuration } from '../../lib/format';
 import { CATEGORIES } from '../../media/categories';
@@ -42,6 +43,7 @@ function Picker({
   const [folderId, setFolderId] = useState('');
   const [items, setItems] = useState<MediaItem[] | null>(null);
   const [search, setSearch] = useState('');
+  const [description, setDescription] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
   // Goes up when Retry is pressed, so the folders are asked for again.
@@ -90,7 +92,7 @@ function Picker({
     setAttaching(true);
     setAttachError(null);
     try {
-      onAttached(await addLibraryAttachment(topicId, item.id));
+      onAttached(await addLibraryAttachment(topicId, item.id, description.trim() || undefined));
       onClose();
     } catch (error) {
       setAttachError(describeError(error));
@@ -122,6 +124,14 @@ function Picker({
         </Select>
       </div>
       <TextField label="Search by title" autoComplete="off" value={search} onChange={(event) => setSearch(event.target.value)} />
+      <TextArea
+        label="Description"
+        rows={2}
+        maxLength={2000}
+        hint="Optional. Shown with the file you attach. Without one, the description of the library item is shown."
+        value={description}
+        onChange={(event) => setDescription(event.target.value)}
+      />
       {attachError ? <Alert tone="error">{attachError}</Alert> : null}
       {loadError ? (
         <>

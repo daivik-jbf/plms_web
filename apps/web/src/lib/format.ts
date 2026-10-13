@@ -28,3 +28,6 @@ export function formatDuration(seconds: number | null): string {
   const rest = seconds % 60;
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(rest)}` : `${minutes}:${pad(rest)}`;
 }
+
+// "1 video", "2 videos".
+export const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? '' : 's'}`;

@@ -54,7 +54,7 @@ export const startUploadSchema = z.object({
 });
 
 // An attachment has no folder, and its title defaults to the file name.
-export const startAttachmentUploadSchema = z.object({ title: titleSchema.optional(), ...uploadFileFields });
+export const startAttachmentUploadSchema = z.object({ title: titleSchema.optional(), description: descriptionSchema.nullish(), ...uploadFileFields });
 
 export const partUrlsSchema = z.object({
   partNumbers: z.array(z.number().int().min(1).max(MAX_PARTS)).min(1).max(MAX_PART_URLS_PER_REQUEST),
@@ -72,12 +72,15 @@ export const coverStartSchema = z.object({
 export const ORDER_CHANGED_MESSAGE = 'The list changed while you were editing it. Reload and try again.';
 
 // Attaching a library item to a topic: the title is optional; without one the attachment follows the item's own title.
-export const libraryAttachmentSchema = z.object({ itemId: z.uuid(), title: titleSchema.optional() });
+export const libraryAttachmentSchema = z.object({ itemId: z.uuid(), title: titleSchema.optional(), description: descriptionSchema.nullish() });
 
-export const attachmentTitleSchema = z.object({ title: titleSchema });
+export const updateAttachmentSchema = z
+  .object({ title: titleSchema.optional(), description: descriptionSchema.nullable().optional() })
+  .refine((value) => value.title !== undefined || value.description !== undefined, { message: 'Nothing to change.' });
 
 export type StartUploadInput = z.infer<typeof startUploadSchema>;
 export type UpdateItemInput = z.infer<typeof updateItemSchema>;
 export type CoverStartInput = z.infer<typeof coverStartSchema>;
 export type LibraryAttachmentInput = z.infer<typeof libraryAttachmentSchema>;
+export type UpdateAttachmentInput = z.infer<typeof updateAttachmentSchema>;
 export type StartAttachmentUploadInput = z.infer<typeof startAttachmentUploadSchema>;

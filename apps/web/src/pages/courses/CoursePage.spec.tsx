@@ -121,6 +121,13 @@ function renderPage(route = '/courses/c1') {
 describe('CoursePage', () => {
   beforeEach(() => vi.unstubAllGlobals());
 
+  it('has a Back to Courses button in the banner that returns to the list with this course chosen', async () => {
+    startServer();
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'Fire safety' });
+    expect(screen.getByRole('link', { name: 'Back to Courses' })).toHaveAttribute('href', '/courses?course=c1');
+  });
+
   it('shows a loading state, then the course with its cover, text, breadcrumb and tree', async () => {
     startServer();
     renderPage();
@@ -435,21 +442,51 @@ describe('CoursePage: building the course', () => {
     expect(within(screen.getByRole('treeitem', { name: 'Equipment' })).getByRole('treeitem', { name: 'Extinguishers' })).toBeInTheDocument();
   });
 
-  it('renames a topic and updates the open topic panel', async () => {
+  it('adds a topic with a description, and sends it with the title', async () => {
+    const calls = startServer();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a topic to Equipment' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add topic' });
+    await userEvent.type(within(dialog).getByLabelText('Topic title'), 'Extinguishers');
+    await userEvent.type(within(dialog).getByLabelText('Description'), '  Types and uses.  ');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add topic' }));
+    expect(await screen.findByText('Topic "Extinguishers" added.')).toBeInTheDocument();
+    expect(calls.find((call) => call.key === 'POST /api/lessons/l2/topics')?.body).toEqual({ title: 'Extinguishers', description: 'Types and uses.' });
+  });
+
+  it('edits the open topic from its row in the tree and updates the open topic panel', async () => {
     const calls = startServer();
     renderPage('/courses/c1?topic=t1');
     await screen.findByRole('heading', { level: 2, name: 'Fire exits' });
-    await userEvent.click(screen.getByRole('button', { name: 'Rename topic Fire exits' }));
-    const dialog = screen.getByRole('dialog', { name: 'Rename topic' });
+    await userEvent.click(screen.getByRole('button', { name: 'Edit topic Fire exits' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit topic' });
     const field = within(dialog).getByLabelText('Topic title');
     expect(field).toHaveValue('Fire exits');
     await userEvent.clear(field);
     await userEvent.type(field, 'Exit routes');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText('Topic renamed to "Exit routes".')).toBeInTheDocument();
+    expect(await screen.findByText('Topic saved.')).toBeInTheDocument();
     expect(calls.find((call) => call.key === 'PATCH /api/topics/t1')?.body).toEqual({ title: 'Exit routes' });
     expect(await screen.findByRole('heading', { level: 2, name: 'Exit routes' })).toBeInTheDocument();
     expect(screen.getByRole('treeitem', { name: 'Exit routes' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('edits any topic from its row, not only the one that is open, starting from its own text', async () => {
+    const calls = startServer();
+    renderPage('/courses/c1?topic=t1');
+    await screen.findByRole('heading', { level: 2, name: 'Fire exits' });
+    await userEvent.click(screen.getByRole('button', { name: 'Edit topic <b>Alarms</b>' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit topic' });
+    expect(within(dialog).getByLabelText('Topic title')).toHaveValue('<b>Alarms</b>');
+    expect(within(dialog).getByLabelText('Description')).toHaveValue(topicsFixture.t2.description ?? '');
+    await userEvent.clear(within(dialog).getByLabelText('Description'));
+    await userEvent.type(within(dialog).getByLabelText('Description'), 'New text');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Topic saved.')).toBeInTheDocument();
+    expect(calls.find((call) => call.key === 'PATCH /api/topics/t2')?.body).toEqual({ description: 'New text' });
+    expect(calls.some((call) => call.key === 'PATCH /api/topics/t1')).toBe(false);
+    // The open topic stays the one that was open.
+    expect(screen.getByRole('heading', { level: 2, name: 'Fire exits' })).toBeInTheDocument();
   });
 
   it('moves a lesson down and sends the whole order of lessons', async () => {

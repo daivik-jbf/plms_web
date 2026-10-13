@@ -10,6 +10,7 @@ import {
   type UploadStatus as ServerUploadStatus,
   uploadCover,
 } from '../api/media';
+import { uploadAttachmentCover } from '../api/courses';
 import { formatBytes } from '../lib/format';
 import { createBrowserDeps } from './browser-deps';
 import { describeUploadError } from './describe-upload-error';
@@ -41,7 +42,7 @@ interface StartBase {
 }
 
 // A library upload goes into a folder and may bring a description and a cover; an attachment goes into a topic.
-export type StartInput = (StartBase & { folderId: string; description: string; cover: File | null }) | (StartBase & { topicId: string });
+export type StartInput = (StartBase & { folderId: string; description: string; cover: File | null }) | (StartBase & { topicId: string; description?: string; cover?: File | null });
 
 export interface UploadsValue {
   jobs: UploadJob[];
@@ -77,6 +78,8 @@ type ResumableUpload = Pick<PendingUpload, 'fileId' | 'itemId' | 'folderId' | 't
 interface Source {
   file: File;
   itemId: string;
+  // The upload is an attachment of a topic, so its cover goes to the attachment and not to a library item.
+  attachment?: boolean;
   partSize: number;
   partCount: number;
 }
@@ -118,7 +121,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
       try {
         if (cover) {
           try {
-            await uploadCover(source.itemId, cover);
+            await (source.attachment ? uploadAttachmentCover : uploadCover)(source.itemId, cover);
           } catch {
             patch(id, { coverWarning: true });
           }
@@ -185,6 +188,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
         'topicId' in input
           ? await startAttachmentUpload(input.topicId, {
               title: input.title,
+              description: input.description || undefined,
               fileName: input.file.name,
               contentType: input.contentType,
               sizeBytes: input.file.size,
@@ -199,7 +203,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
               sizeBytes: input.file.size,
               durationSeconds: input.durationSeconds,
             });
-      sources.current.set(created.fileId, { file: input.file, itemId: created.itemId, partSize: created.partSize, partCount: created.partCount });
+      sources.current.set(created.fileId, { file: input.file, itemId: created.itemId, attachment: 'topicId' in input, partSize: created.partSize, partCount: created.partCount });
       setJobs((list) => [
         ...list,
         {
@@ -216,7 +220,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
           coverWarning: false,
         },
       ]);
-      void run(created.fileId, new Map(), 'cover' in input ? input.cover : null);
+      void run(created.fileId, new Map(), 'cover' in input ? (input.cover ?? null) : null);
     },
     [run],
   );

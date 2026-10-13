@@ -5,9 +5,13 @@ import { type Folder, listFolders, reorderFolders } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
+import { Icon } from '../../components/Icon';
+import { MoveButton } from '../../components/MoveButton';
 import { Skeleton } from '../../components/Skeleton';
-import { Table } from '../../components/Table';
+import { useMoveFocus } from '../../components/use-move-focus';
+import { plural } from '../../lib/format';
 import type { CategoryConfig } from '../../media/categories';
+import hub from '../courses/CoursesHub.module.css';
 import { FolderDialog, type FolderDialogMode } from './FolderDialog';
 import styles from './Media.module.css';
 
@@ -20,6 +24,8 @@ export function CategoryPage({ category }: { category: CategoryConfig }) {
   const [dialog, setDialog] = useState<FolderDialogMode | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [query, setQuery] = useState('');
+  const moveFocus = useMoveFocus(busy);
 
   const load = useCallback(async () => {
     try {
@@ -57,11 +63,23 @@ export function CategoryPage({ category }: { category: CategoryConfig }) {
     void load();
   }
 
+  const needle = query.trim().toLowerCase();
+  const shown = folders?.filter((folder) => folder.name.toLowerCase().includes(needle)) ?? [];
+
   return (
     <>
-      <div className={styles.header}>
-        <h1>{category.label}</h1>
-        <Button onClick={() => setDialog({ kind: 'create' })}>New folder</Button>
+      <div className={hub.header}>
+        <span className={hub.headerTile} aria-hidden="true">
+          <Icon name={category.icon} size={40} />
+        </span>
+        <div className={hub.headerText}>
+          <h1>{category.label}</h1>
+          <p>{`Organize your ${category.nounPlural} in folders`}</p>
+        </div>
+        <Button className={hub.newButton} onClick={() => setDialog({ kind: 'create' })}>
+          <Icon name="plus" size={20} />
+          New folder
+        </Button>
       </div>
 
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
@@ -84,49 +102,47 @@ export function CategoryPage({ category }: { category: CategoryConfig }) {
       ) : folders.length === 0 ? (
         <EmptyState title="No folders yet">{`Create a folder to start adding ${category.nounPlural}.`}</EmptyState>
       ) : (
-        <Table caption={`${category.nounTitle} folders`}>
-          <thead>
-            <tr>
-              <th scope="col">Folder</th>
-              <th scope="col">{category.label}</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {folders.map((folder, index) => (
-              <tr key={folder.id}>
-                <td data-label="Folder">
-                  <Link className={styles.name} to={`/${category.slug}/${folder.id}`}>
-                    {folder.name}
-                  </Link>
-                </td>
-                <td data-label={category.label}>{folder.itemCount}</td>
-                <td data-label="Actions">
-                  <div className={styles.actions}>
-                    <Link className={styles.link} to={`/${category.slug}/${folder.id}`} aria-label={`Open ${folder.name}`}>
-                      Open
+        <>
+          <div className={styles.search}>
+            <span className={styles.searchIcon}>
+              <Icon name="search" size={18} />
+            </span>
+            <input type="search" aria-label="Search folders" placeholder="Search folders..." value={query} onChange={(event) => setQuery(event.target.value)} />
+          </div>
+          {shown.length === 0 ? (
+            <p>{`No folder matches "${query.trim()}".`}</p>
+          ) : (
+            <ul className={styles.folderGrid} aria-label={`${category.nounTitle} folders`} {...moveFocus}>
+              {shown.map((folder) => {
+                const index = folders.indexOf(folder);
+                return (
+                  <li key={folder.id} className={styles.folderCard}>
+                    <Link className={styles.folderLink} to={`/${category.slug}/${folder.id}`} aria-label={`Open ${folder.name}`}>
+                      <span className={styles.folderTile} aria-hidden="true">
+                        <Icon name="folder" size={28} />
+                      </span>
+                      <span className={styles.folderText}>
+                        <span className={styles.folderName}>{folder.name}</span>
+                        <span className={styles.folderMeta}>{plural(folder.itemCount, category.noun)}</span>
+                      </span>
                     </Link>
-                    <Button variant="secondary" size="small" disabled={busy} aria-label={`Rename ${folder.name}`} onClick={() => setDialog({ kind: 'rename', folder })}>
-                      Rename
-                    </Button>
-                    <Button variant="secondary" size="small" disabled={busy || index === 0} aria-label={`Move ${folder.name} up`} onClick={() => void move(index, -1)}>
-                      ↑ Move up
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      disabled={busy || index === folders.length - 1}
-                      aria-label={`Move ${folder.name} down`}
-                      onClick={() => void move(index, 1)}
-                    >
-                      ↓ Move down
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+                    <div className={styles.folderActions}>
+                      <Button variant="secondary" size="small" className={hub.square} disabled={busy} aria-label={`Rename ${folder.name}`} title="Rename" onClick={() => setDialog({ kind: 'rename', folder })}>
+                        <Icon name="edit" size={16} />
+                      </Button>
+                      <MoveButton className={hub.square} moveKey={`${folder.id}:up`} label={`Move ${folder.name} up`} unavailable={busy || index === 0} onMove={() => void move(index, -1)}>
+                        <Icon name="up" size={16} />
+                      </MoveButton>
+                      <MoveButton className={hub.square} moveKey={`${folder.id}:down`} label={`Move ${folder.name} down`} unavailable={busy || index === folders.length - 1} onMove={() => void move(index, 1)}>
+                        <Icon name="down" size={16} />
+                      </MoveButton>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
 
       <FolderDialog slug={category.slug} mode={dialog} onClose={() => setDialog(null)} onSaved={onSaved} />

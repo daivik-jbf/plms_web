@@ -1,4 +1,5 @@
 import type { CategorySlug } from '../api/media';
+import type { IconName } from '../components/Icon';
 import type { MediaKind } from '../uploads/limits';
 
 export interface CategoryConfig {
@@ -10,13 +11,14 @@ export interface CategoryConfig {
   noun: string;
   nounPlural: string;
   nounTitle: string;
+  icon: IconName;
 }
 
 // The four media categories, in sidebar order: the web copy of the server's table (apps/api/src/media/media-kinds.ts).
 // The kind decides the file rules (uploads/limits.ts) and the player: the pop-up for video, the docked player for audio.
 export const CATEGORIES: readonly CategoryConfig[] = [
-  { slug: 'videos', kind: 'video', label: 'Videos', noun: 'video', nounPlural: 'videos', nounTitle: 'Video' },
-  { slug: 'movies', kind: 'video', label: 'Movies', noun: 'movie', nounPlural: 'movies', nounTitle: 'Movie' },
-  { slug: 'podcasts', kind: 'audio', label: 'Podcasts', noun: 'podcast', nounPlural: 'podcasts', nounTitle: 'Podcast' },
-  { slug: 'songs', kind: 'audio', label: 'Songs', noun: 'song', nounPlural: 'songs', nounTitle: 'Song' },
+  { slug: 'videos', kind: 'video', label: 'Videos', noun: 'video', nounPlural: 'videos', nounTitle: 'Video', icon: 'video' },
+  { slug: 'movies', kind: 'video', label: 'Movies', noun: 'movie', nounPlural: 'movies', nounTitle: 'Movie', icon: 'movies' },
+  { slug: 'podcasts', kind: 'audio', label: 'Podcasts', noun: 'podcast', nounPlural: 'podcasts', nounTitle: 'Podcast', icon: 'podcasts' },
+  { slug: 'songs', kind: 'audio', label: 'Songs', noun: 'song', nounPlural: 'songs', nounTitle: 'Song', icon: 'songs' },
 ];

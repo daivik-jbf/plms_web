@@ -68,6 +68,7 @@ export interface PlayLink {
 
 export interface StartAttachmentUploadInput {
   title: string;
+  description?: string;
   fileName: string;
   contentType: string;
   sizeBytes: number;

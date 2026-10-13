@@ -76,3 +76,9 @@ One line per meaningful change, newest last.
 - 2026-10-12: Added attachments to the topic page: adding from the library, renaming, moving, and opening a video in the pop-up, audio in the dock, a PDF in a new tab and an image in a pop-up.
 - 2026-10-12: Added uploading a file into a topic, with progress and the list of unfinished uploads.
 - 2026-10-12: Documented milestone 5: the courses API page and the media, audit, storage, README, architecture and working-memory files.
+- 2026-10-12: Restyled the portal shell and the Courses pages (blue sidebar, top bar with search, course list with a detail view).
+- 2026-10-12: Added deleting for Admins on courses, lessons and topics, a Trash page to restore or delete for good, and the audit entries for each.
+- 2026-10-12: Added cover images for lessons, topics and uploaded attachments (the upload dialog has a cover field), shown in the course pages.
+- 2026-10-12: Restyled Videos, Movies, Podcasts and Songs like the Courses pages (folder cards, a banner for the open folder, item cards).
+- 2026-10-12: Topics can be added with a description, and files in a topic (uploaded or from the library) have a description and an Edit button for title, description and cover.
+- 2026-10-12: Admins can delete a file in a topic; it goes to the Trash like courses, lessons and topics, and is restored or deleted for good from there.

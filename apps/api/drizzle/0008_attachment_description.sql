@@ -1,0 +1,1 @@
+ALTER TABLE "topic_attachments" ADD COLUMN "description" text;

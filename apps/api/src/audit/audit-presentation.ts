@@ -256,6 +256,86 @@ const SPECS: Record<AuditAction, ActionSpec> = {
     tone: 'change',
     summary: ({ actor, target }) => `${actor} set the cover image of the course ${quoted(target)}`,
   },
+  'content.course.deleted': {
+    label: 'Course deleted',
+    tone: 'danger',
+    summary: ({ actor, target }) => `${actor} moved the course ${quoted(target)} to the Trash`,
+  },
+  'content.course.restored': {
+    label: 'Course restored',
+    tone: 'success',
+    summary: ({ actor, target }) => `${actor} restored the course ${quoted(target)} from the Trash`,
+  },
+  'content.course.purged': {
+    label: 'Course deleted for good',
+    tone: 'danger',
+    summary: ({ actor, target }) => `${actor} deleted the course ${quoted(target)} for good`,
+  },
+  'content.lesson.deleted': {
+    label: 'Lesson deleted',
+    tone: 'danger',
+    summary: ({ actor, target }) => `${actor} moved the lesson ${quoted(target)} to the Trash`,
+  },
+  'content.lesson.restored': {
+    label: 'Lesson restored',
+    tone: 'success',
+    summary: ({ actor, target }) => `${actor} restored the lesson ${quoted(target)} from the Trash`,
+  },
+  'content.lesson.purged': {
+    label: 'Lesson deleted for good',
+    tone: 'danger',
+    summary: ({ actor, target }) => `${actor} deleted the lesson ${quoted(target)} for good`,
+  },
+  'content.topic.deleted': {
+    label: 'Topic deleted',
+    tone: 'danger',
+    summary: ({ actor, target }) => `${actor} moved the topic ${quoted(target)} to the Trash`,
+  },
+  'content.topic.restored': {
+    label: 'Topic restored',
+    tone: 'success',
+    summary: ({ actor, target }) => `${actor} restored the topic ${quoted(target)} from the Trash`,
+  },
+  'content.topic.purged': {
+    label: 'Topic deleted for good',
+    tone: 'danger',
+    summary: ({ actor, target }) => `${actor} deleted the topic ${quoted(target)} for good`,
+  },
+  'content.attachment.edited': {
+    label: 'Attachment edited',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} edited the attachment ${quoted(target)}`,
+  },
+  'content.attachment.deleted': {
+    label: 'Attachment deleted',
+    tone: 'danger',
+    summary: ({ actor, target }) => `${actor} moved the attachment ${quoted(target)} to the Trash`,
+  },
+  'content.attachment.restored': {
+    label: 'Attachment restored',
+    tone: 'success',
+    summary: ({ actor, target }) => `${actor} restored the attachment ${quoted(target)} from the Trash`,
+  },
+  'content.attachment.purged': {
+    label: 'Attachment deleted for good',
+    tone: 'danger',
+    summary: ({ actor, target }) => `${actor} deleted the attachment ${quoted(target)} for good`,
+  },
+  'content.lesson.cover_set': {
+    label: 'Lesson cover set',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} set the cover image of the lesson ${quoted(target)}`,
+  },
+  'content.topic.cover_set': {
+    label: 'Topic cover set',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} set the cover image of the topic ${quoted(target)}`,
+  },
+  'content.attachment.cover_set': {
+    label: 'Attachment cover set',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} set the cover image of the attachment ${quoted(target)}`,
+  },
   'content.lesson.added': {
     label: 'Lesson added',
     tone: 'change',

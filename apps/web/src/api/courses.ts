@@ -17,6 +17,8 @@ export interface TopicSummary {
   id: string;
   title: string;
   position: number;
+  // A one-hour link to the cover image; missing or null when there is none.
+  coverUrl?: string | null;
   // Ready attachments only.
   attachmentCount: number;
 }
@@ -25,6 +27,7 @@ export interface LessonNode {
   id: string;
   title: string;
   position: number;
+  coverUrl?: string | null;
   topics: TopicSummary[];
 }
 
@@ -47,6 +50,7 @@ export interface TopicView {
   title: string;
   description: string | null;
   position: number;
+  coverUrl?: string | null;
 }
 
 export type AttachmentKind = 'video' | 'audio' | 'pdf' | 'image';
@@ -57,6 +61,8 @@ export interface Attachment {
   position: number;
   kind: AttachmentKind;
   title: string;
+  // The text about the file; missing or null when there is none.
+  description?: string | null;
   // Uploaded into the topic, or picked from the library (and then following the library item).
   source: 'upload' | 'library';
   status: 'uploading' | 'ready';
@@ -110,8 +116,8 @@ export const renameLesson = (id: string, title: string): Promise<CourseTree> => 
 export const reorderLessons = (courseId: string, ids: string[]): Promise<CourseTree> =>
   api<CourseTree>(`/api/courses/${courseId}/lessons/order`, { method: 'PUT', body: { ids } });
 
-export const addTopic = (lessonId: string, title: string): Promise<CourseTree> =>
-  api<CourseTree>(`/api/lessons/${lessonId}/topics`, { method: 'POST', body: { title } });
+export const addTopic = (lessonId: string, title: string, description?: string): Promise<CourseTree> =>
+  api<CourseTree>(`/api/lessons/${lessonId}/topics`, { method: 'POST', body: description ? { title, description } : { title } });
 
 export const reorderTopics = (lessonId: string, ids: string[]): Promise<CourseTree> =>
   api<CourseTree>(`/api/lessons/${lessonId}/topics/order`, { method: 'PUT', body: { ids } });
@@ -120,14 +126,31 @@ export const updateTopic = (id: string, input: { title?: string; description?: s
   api<TopicView>(`/api/topics/${id}`, { method: 'PATCH', body: input });
 
 
-export const addLibraryAttachment = (topicId: string, itemId: string): Promise<Attachment> =>
-  api<Attachment>(`/api/topics/${topicId}/attachments/library`, { method: 'POST', body: { itemId } });
+export const addLibraryAttachment = (topicId: string, itemId: string, description?: string): Promise<Attachment> =>
+  api<Attachment>(`/api/topics/${topicId}/attachments/library`, { method: 'POST', body: description ? { itemId, description } : { itemId } });
 
-export const renameAttachment = (id: string, title: string): Promise<Attachment> =>
-  api<Attachment>(`/api/attachments/${id}`, { method: 'PATCH', body: { title } });
+export const updateAttachment = (id: string, input: { title?: string; description?: string }): Promise<Attachment> =>
+  api<Attachment>(`/api/attachments/${id}`, { method: 'PATCH', body: input });
 
 export const reorderAttachments = (topicId: string, ids: string[]): Promise<Attachment[]> =>
   api<Attachment[]>(`/api/topics/${topicId}/attachments/order`, { method: 'PUT', body: { ids } });
 
 // A one-hour link to view or play the attachment; every link is recorded in the audit log.
 export const openAttachment = (id: string): Promise<OpenLink> => api<OpenLink>(`/api/attachments/${id}/open`, { method: 'POST' });
+
+// Admins only: each moves the item, with what is under it, to the Trash (see api/trash.ts).
+export const deleteCourse = (id: string): Promise<void> => api<void>(`/api/courses/${id}`, { method: 'DELETE' });
+
+export const deleteLesson = (id: string): Promise<CourseTree> => api<CourseTree>(`/api/lessons/${id}`, { method: 'DELETE' });
+
+export const deleteTopic = (id: string): Promise<CourseTree> => api<CourseTree>(`/api/topics/${id}`, { method: 'DELETE' });
+
+// The cover image of a lesson, a topic or an uploaded attachment: three steps (see uploadCoverTo), the answer is the owner as it is now.
+export const uploadLessonCover = (id: string, file: File): Promise<CourseTree> => uploadCoverTo<CourseTree>(`/api/lessons/${id}`, file);
+
+export const uploadTopicCover = (id: string, file: File): Promise<TopicView> => uploadCoverTo<TopicView>(`/api/topics/${id}`, file);
+
+export const uploadAttachmentCover = (id: string, file: File): Promise<Attachment> => uploadCoverTo<Attachment>(`/api/attachments/${id}`, file);
+
+// Admins only: the attachment goes to the Trash (see api/trash.ts). A library file only leaves the topic.
+export const deleteAttachment = (id: string): Promise<void> => api<void>(`/api/attachments/${id}`, { method: 'DELETE' });

@@ -67,10 +67,39 @@ describe('AttachmentUploadDialog', () => {
     await userEvent.clear(title);
     await userEvent.type(title, '  Our file  ');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
-    expect(start).toHaveBeenCalledWith({ file, topicId: 't1', contentType: declared, title: 'Our file', durationSeconds: readAs ? 42 : null });
+    expect(start).toHaveBeenCalledWith({ file, topicId: 't1', contentType: declared, title: 'Our file', durationSeconds: readAs ? 42 : null, description: '', cover: null });
     expect(vi.mocked(readDuration).mock.calls).toEqual(readAs ? [[file, readAs]] : []);
     await vi.waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('sends the description typed for the file along with it', async () => {
+    const { dialog, start } = setup();
+    const file = new File([new Uint8Array(10)], 'Exit map.pdf', { type: 'application/pdf' });
+    await userEvent.upload(within(dialog).getByLabelText(/^File/), file);
+    await userEvent.type(within(dialog).getByLabelText('Description'), '  Where to go.  ');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    await vi.waitFor(() => expect(start).toHaveBeenCalledWith(expect.objectContaining({ file, description: 'Where to go.' })));
+  });
+
+  it('sends the cover image chosen for the file along with it', async () => {
+    const { dialog, start } = setup();
+    const file = new File([new Uint8Array(10)], 'Exit map.pdf', { type: 'application/pdf' });
+    const cover = new File([new Uint8Array(10)], 'cover.png', { type: 'image/png' });
+    await userEvent.upload(within(dialog).getByLabelText(/^File/), file);
+    await userEvent.upload(within(dialog).getByLabelText('Cover image'), cover);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    await vi.waitFor(() => expect(start).toHaveBeenCalledWith(expect.objectContaining({ file, cover })));
+  });
+
+  it('refuses a cover that is not a JPEG, PNG or WebP image, and sends nothing', async () => {
+    const { dialog, start } = setup();
+    await userEvent.upload(within(dialog).getByLabelText(/^File/), new File([new Uint8Array(10)], 'Exit map.pdf', { type: 'application/pdf' }));
+    await userEvent.upload(within(dialog).getByLabelText('Cover image'), new File(['x'], 'cover.gif', { type: 'image/gif' }), { applyAccept: false });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
+    expect(await within(dialog).findByText('Choose a JPEG, PNG or WebP image.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Cover image')).toHaveFocus();
+    expect(start).not.toHaveBeenCalled();
   });
 
   it('asks for a file and a title before sending anything', async () => {

@@ -9,7 +9,7 @@ import {
   getTopic,
   listCourses,
   openAttachment,
-  renameAttachment,
+  updateAttachment,
   renameLesson,
   reorderAttachments,
   reorderCourses,
@@ -108,12 +108,12 @@ describe('attachment api', () => {
       return { body: {} };
     });
     await addLibraryAttachment('t1', 'item-1');
-    await renameAttachment('a1', 'Exit map');
+    await updateAttachment('a1', { title: 'Exit map', description: 'Where to go.' });
     await reorderAttachments('t1', ['a2', 'a1']);
     await openAttachment('a1');
     expect(calls.filter((call) => /\/api\/(topics|attachments)\//.test(call))).toEqual([
       'POST /api/topics/t1/attachments/library {"itemId":"item-1"}',
-      'PATCH /api/attachments/a1 {"title":"Exit map"}',
+      'PATCH /api/attachments/a1 {"title":"Exit map","description":"Where to go."}',
       'PUT /api/topics/t1/attachments/order {"ids":["a2","a1"]}',
       'POST /api/attachments/a1/open',
     ]);

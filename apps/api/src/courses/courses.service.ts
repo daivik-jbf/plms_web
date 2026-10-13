@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, count, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
 import { DB, type Database, type DbExecutor } from '../db/db.module';
@@ -33,6 +33,8 @@ export interface TopicSummary {
   id: string;
   title: string;
   position: number;
+  // A one-hour link to the cover image, or null.
+  coverUrl: string | null;
   // Ready attachments only: one that is still uploading is not part of the topic yet.
   attachmentCount: number;
 }
@@ -41,6 +43,7 @@ export interface LessonView {
   id: string;
   title: string;
   position: number;
+  coverUrl: string | null;
   topics: TopicSummary[];
 }
 
@@ -65,7 +68,7 @@ export class CoursesService {
   ) {}
 
   async list(): Promise<CourseView[]> {
-    return this.views(await this.rows(this.db, undefined));
+    return this.views(await this.rows(this.db, isNull(courses.deletedAt)));
   }
 
   async create(actor: AuthUser, input: CreateCourseInput): Promise<CourseView> {
@@ -91,9 +94,13 @@ export class CoursesService {
   async reorder(actor: AuthUser, ids: string[]): Promise<CourseView[]> {
     await this.db.transaction(async (tx) => {
       // Locked in id order so two people reordering at once cannot deadlock, then the order is read in SQL.
-      await tx.select({ id: courses.id }).from(courses).orderBy(asc(courses.id)).for('update');
+      await tx.select({ id: courses.id }).from(courses).where(isNull(courses.deletedAt)).orderBy(asc(courses.id)).for('update');
       const current = (
-        await tx.select({ id: courses.id }).from(courses).orderBy(asc(courses.position), asc(courses.createdAt), asc(courses.id))
+        await tx
+          .select({ id: courses.id })
+          .from(courses)
+          .where(isNull(courses.deletedAt))
+          .orderBy(asc(courses.position), asc(courses.createdAt), asc(courses.id))
       ).map((course) => course.id);
       const changed = await applyOrder(current, ids, (id, position) =>
         tx.update(courses).set({ position, updatedAt: new Date() }).where(eq(courses.id, id)),
@@ -110,12 +117,12 @@ export class CoursesService {
   }
 
   async tree(id: string, executor: DbExecutor = this.db): Promise<CourseTree> {
-    const [row] = await this.rows(executor, eq(courses.id, id));
+    const [row] = await this.rows(executor, and(eq(courses.id, id), isNull(courses.deletedAt)));
     if (!row) throw new NotFoundException(NOT_FOUND);
     const lessonRows = await executor
       .select()
       .from(lessons)
-      .where(eq(lessons.courseId, id))
+      .where(and(eq(lessons.courseId, id), isNull(lessons.deletedAt)))
       .orderBy(asc(lessons.position), asc(lessons.createdAt), asc(lessons.id));
     const topicRows =
       lessonRows.length === 0
@@ -124,9 +131,12 @@ export class CoursesService {
             .select()
             .from(topics)
             .where(
-              inArray(
-                topics.lessonId,
-                lessonRows.map((lesson) => lesson.id),
+              and(
+                inArray(
+                  topics.lessonId,
+                  lessonRows.map((lesson) => lesson.id),
+                ),
+                isNull(topics.deletedAt),
               ),
             )
             .orderBy(asc(topics.position), asc(topics.createdAt), asc(topics.id));
@@ -143,19 +153,28 @@ export class CoursesService {
                   topicRows.map((topic) => topic.id),
                 ),
                 eq(topicAttachments.status, 'ready'),
+                isNull(topicAttachments.deletedAt),
               ),
             )
             .groupBy(topicAttachments.topicId);
     const countOf = new Map(attachmentCounts.map((entry) => [entry.topicId, entry.total]));
+    const coverOf = await this.coverLinks([...lessonRows, ...topicRows].map((row) => row.coverFileId));
     return {
       ...(await this.toBase(row)),
       lessons: lessonRows.map((lesson) => ({
         id: lesson.id,
         title: lesson.title,
         position: lesson.position,
+        coverUrl: coverOf.get(lesson.coverFileId ?? '') ?? null,
         topics: topicRows
           .filter((topic) => topic.lessonId === lesson.id)
-          .map((topic) => ({ id: topic.id, title: topic.title, position: topic.position, attachmentCount: countOf.get(topic.id) ?? 0 })),
+          .map((topic) => ({
+            id: topic.id,
+            title: topic.title,
+            position: topic.position,
+            coverUrl: coverOf.get(topic.coverFileId ?? '') ?? null,
+            attachmentCount: countOf.get(topic.id) ?? 0,
+          })),
       })),
     };
   }
@@ -192,10 +211,23 @@ export class CoursesService {
   }
 
   async requireCourse(executor: DbExecutor, id: string, lock = false): Promise<Course> {
-    const query = executor.select().from(courses).where(eq(courses.id, id));
+    const query = executor.select().from(courses).where(and(eq(courses.id, id), isNull(courses.deletedAt)));
     const [course] = lock ? await query.for('update') : await query;
     if (!course) throw new NotFoundException(NOT_FOUND);
     return course;
+  }
+
+  // Moves the course, with its lessons, topics and files, to the Trash. They stay as they are until it is restored or deleted for good.
+  async remove(actor: AuthUser, id: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const course = await this.requireCourse(tx, id, true);
+      await tx.update(courses).set({ deletedAt: new Date(), deletedBy: actor.id }).where(eq(courses.id, id));
+      await this.audit.record(tx, {
+        actor: actorOf(actor),
+        action: 'content.course.deleted',
+        target: { type: 'course', id, label: course.title },
+      });
+    });
   }
 
   private coverOwner(course: Course): CoverOwner {
@@ -229,7 +261,7 @@ export class CoursesService {
     const lessonCounts =
       ids.length === 0
         ? []
-        : await this.db.select({ courseId: lessons.courseId, total: count() }).from(lessons).where(inArray(lessons.courseId, ids)).groupBy(lessons.courseId);
+        : await this.db.select({ courseId: lessons.courseId, total: count() }).from(lessons).where(and(inArray(lessons.courseId, ids), isNull(lessons.deletedAt))).groupBy(lessons.courseId);
     const topicCounts =
       ids.length === 0
         ? []
@@ -237,7 +269,7 @@ export class CoursesService {
             .select({ courseId: lessons.courseId, total: count() })
             .from(topics)
             .innerJoin(lessons, eq(lessons.id, topics.lessonId))
-            .where(inArray(lessons.courseId, ids))
+            .where(and(inArray(lessons.courseId, ids), isNull(lessons.deletedAt), isNull(topics.deletedAt)))
             .groupBy(lessons.courseId);
     const lessonsOf = new Map(lessonCounts.map((entry) => [entry.courseId, entry.total]));
     const topicsOf = new Map(topicCounts.map((entry) => [entry.courseId, entry.total]));
@@ -247,6 +279,16 @@ export class CoursesService {
         lessonCount: lessonsOf.get(row.course.id) ?? 0,
         topicCount: topicsOf.get(row.course.id) ?? 0,
       })),
+    );
+  }
+
+  // One-hour links to the ready cover files with these ids, by file id.
+  private async coverLinks(ids: (string | null)[]): Promise<Map<string, string>> {
+    const wanted = ids.filter((id): id is string => id !== null);
+    if (wanted.length === 0) return new Map();
+    const rows = await this.db.select().from(files).where(and(inArray(files.id, wanted), eq(files.status, 'ready')));
+    return new Map(
+      await Promise.all(rows.map(async (file): Promise<[string, string]> => [file.id, await this.storage.presignGet(file.storageKey, LINK_TTL_SECONDS, { contentType: file.contentType })])),
     );
   }
 

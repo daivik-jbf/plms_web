@@ -29,7 +29,15 @@ describe('course audit presentation', () => {
 
   it('files the course actions under content', () => {
     const course = AUDIT_ACTIONS.filter((action) => action.startsWith('content.course.'));
-    expect(course).toEqual(['content.course.created', 'content.course.edited', 'content.course.reordered', 'content.course.cover_set']);
+    expect(course).toEqual([
+      'content.course.created',
+      'content.course.edited',
+      'content.course.reordered',
+      'content.course.cover_set',
+      'content.course.deleted',
+      'content.course.restored',
+      'content.course.purged',
+    ]);
     expect(course.every((action) => categoryOf(action) === 'content')).toBe(true);
   });
 });
@@ -76,8 +84,27 @@ describe('lesson and topic audit presentation', () => {
 
   it('files the lesson and topic actions under content', () => {
     const structure = AUDIT_ACTIONS.filter((action) => /^content\.(lesson|topic)\./.test(action));
-    expect(structure).toHaveLength(6);
+    expect(structure).toHaveLength(14);
     expect(structure.every((action) => categoryOf(action) === 'content')).toBe(true);
+  });
+});
+
+describe('Trash audit presentation', () => {
+  it.each([
+    ['content.course.deleted', 'Course deleted', 'danger', "Anita Rao moved the course 'Fire safety' to the Trash"],
+    ['content.course.restored', 'Course restored', 'success', "Anita Rao restored the course 'Fire safety' from the Trash"],
+    ['content.course.purged', 'Course deleted for good', 'danger', "Anita Rao deleted the course 'Fire safety' for good"],
+    ['content.lesson.deleted', 'Lesson deleted', 'danger', "Anita Rao moved the lesson 'Fire safety' to the Trash"],
+    ['content.lesson.restored', 'Lesson restored', 'success', "Anita Rao restored the lesson 'Fire safety' from the Trash"],
+    ['content.lesson.purged', 'Lesson deleted for good', 'danger', "Anita Rao deleted the lesson 'Fire safety' for good"],
+    ['content.topic.deleted', 'Topic deleted', 'danger', "Anita Rao moved the topic 'Fire safety' to the Trash"],
+    ['content.topic.restored', 'Topic restored', 'success', "Anita Rao restored the topic 'Fire safety' from the Trash"],
+    ['content.topic.purged', 'Topic deleted for good', 'danger', "Anita Rao deleted the topic 'Fire safety' for good"],
+    ['content.attachment.deleted', 'Attachment deleted', 'danger', "Anita Rao moved the attachment 'Fire safety' to the Trash"],
+    ['content.attachment.restored', 'Attachment restored', 'success', "Anita Rao restored the attachment 'Fire safety' from the Trash"],
+    ['content.attachment.purged', 'Attachment deleted for good', 'danger', "Anita Rao deleted the attachment 'Fire safety' for good"],
+  ] as const)('%s', (action, label, tone, summary) => {
+    expect(presentAudit(entry({ action, targetLabel: 'Fire safety' }))).toEqual({ label, tone, category: 'content', summary });
   });
 });
 

@@ -14,6 +14,7 @@ import { AuditService } from '../audit/audit.service';
 import type { AuditAction } from '../audit/audit.actions';
 import type { AuthUser } from '../auth/auth.types';
 import { DB, type Database, type DbTransaction } from '../db/db.module';
+import { findLiveTopic } from '../db/live';
 import { type FileRow, files, type MediaItem, mediaFolders, mediaItems, type TopicAttachment, topicAttachments, topics } from '../db/schema';
 import { LINK_TTL_SECONDS, PART_SIZE, partCountFor } from '../storage/storage.constants';
 import { STORAGE, StorageError, type StoragePort, type StoredPart } from '../storage/storage.port';
@@ -112,8 +113,7 @@ export class UploadsService {
     topicId: string,
     input: StartAttachmentUploadInput,
   ): Promise<{ itemId: string; fileId: string; partSize: number; partCount: number }> {
-    const [topic] = await this.db.select({ id: topics.id }).from(topics).where(eq(topics.id, topicId));
-    if (!topic) throw new NotFoundException('Topic not found.');
+    if (!(await findLiveTopic(this.db, topicId))) throw new NotFoundException('Topic not found.');
     // An attachment has no folder: the declared type decides the kind, and the size limit is that kind's.
     const fieldErrors = attachmentFieldErrors(input.contentType, input.sizeBytes);
     if (fieldErrors) throw new BadRequestException({ error: 'Bad Request', message: 'Validation failed', fieldErrors });
@@ -123,7 +123,7 @@ export class UploadsService {
 
     return this.begin(actor, MEDIA_KINDS[kindName], input, async (tx, file) => {
       // The topic row is locked (parent before child), so two uploads started at once get different positions.
-      await tx.select({ id: topics.id }).from(topics).where(eq(topics.id, topicId)).for('update');
+      if (!(await findLiveTopic(tx, topicId, true))) throw new NotFoundException('Topic not found.');
       const [{ next }] = await tx
         .select({ next: sql<number>`coalesce(max(${topicAttachments.position}), -1) + 1`.mapWith(Number) })
         .from(topicAttachments)
@@ -135,6 +135,7 @@ export class UploadsService {
           position: next,
           kind: kindName,
           title,
+          description: input.description ?? null,
           fileId: file.id,
           durationSeconds: input.durationSeconds ?? null,
           status: 'uploading',

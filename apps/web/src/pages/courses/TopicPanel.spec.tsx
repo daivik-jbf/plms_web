@@ -7,7 +7,7 @@ import type { Folder, MediaItem, PendingUpload } from '../../api/media';
 import { PlayerContext, type PlayerValue } from '../../player/PlayerContext';
 import { type UploadJob, UploadsContext, type UploadsValue } from '../../uploads/UploadsContext';
 import type { MockResponse } from '../../test/fetch-mock';
-import { mockSession, renderWithSession, STAFF } from '../../test/session';
+import { ADMIN, mockSession, renderWithSession, STAFF } from '../../test/session';
 import { ATTACHMENT_ACCEPT } from '../../uploads/limits';
 import { TopicPanel } from './TopicPanel';
 
@@ -85,10 +85,10 @@ const items: Record<string, MediaItem[]> = {
 
 type Override = MockResponse | ((body: Record<string, unknown>) => MockResponse);
 
-function startServer(initial: TopicDetail = topic(fixture), overrides: Record<string, Override> = {}) {
+function startServer(initial: TopicDetail = topic(fixture), overrides: Record<string, Override> = {}, user = STAFF) {
   const state = { topic: structuredClone(initial) };
   const calls: { key: string; body: Record<string, unknown> }[] = [];
-  mockSession(STAFF, (url, init) => {
+  mockSession(user, (url, init) => {
     const key = `${init.method ?? 'GET'} ${url}`;
     const body = typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {};
     calls.push({ key, body });
@@ -105,7 +105,12 @@ function startServer(initial: TopicDetail = topic(fixture), overrides: Record<st
       state.topic.attachments.push(created);
       return { status: 201, body: created };
     }
-    const rename = /^PATCH \/api\/attachments\/([^/]+)$/.exec(key);
+    const removeFile = /^DELETE \/api\/attachments\/([^/]+)$/.exec(key);
+    if (removeFile) {
+      state.topic.attachments = state.topic.attachments.filter((candidate) => candidate.id !== removeFile[1]);
+      return { status: 204, body: null };
+    }
+    const rename = /^PATCH \/api\/attachments\/([^/]+)$/.exec(key);/^PATCH \/api\/attachments\/([^/]+)$/.exec(key);
     if (rename) {
       const target = state.topic.attachments.find((candidate) => candidate.id === rename[1])!;
       target.title = String(body.title);
@@ -339,19 +344,71 @@ describe('TopicPanel attachments', () => {
   });
 
   describe('renaming and moving', () => {
-    it('renames an attachment, starting from its current title', async () => {
+    it('edits an attachment, starting from its current title and description, and sends only what changed', async () => {
       const calls = startServer();
       renderPanel();
-      await userEvent.click(await screen.findByRole('button', { name: 'Rename Exit map' }));
-      const dialog = screen.getByRole('dialog', { name: 'Rename attachment' });
+      await userEvent.click(await screen.findByRole('button', { name: 'Edit Exit map' }));
+      const dialog = screen.getByRole('dialog', { name: 'Edit attachment' });
       const field = within(dialog).getByLabelText('Attachment title');
       expect(field).toHaveValue('Exit map');
+      expect(within(dialog).getByLabelText('Description')).toHaveValue('');
       await userEvent.clear(field);
       await userEvent.type(field, '  Exit route map ');
+      await userEvent.type(within(dialog).getByLabelText('Description'), 'Where to go.');
       await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-      expect(await screen.findByText('Attachment renamed to "Exit route map".')).toBeInTheDocument();
-      expect(calls.find((call) => call.key === 'PATCH /api/attachments/a1')?.body).toEqual({ title: 'Exit route map' });
+      expect(await screen.findByText('Attachment "Exit route map" saved.')).toBeInTheDocument();
+      expect(calls.find((call) => call.key === 'PATCH /api/attachments/a1')?.body).toEqual({ title: 'Exit route map', description: 'Where to go.' });
       expect(await screen.findByRole('row', { name: /Exit route map/ })).toBeInTheDocument();
+    });
+
+    it('offers a cover for an uploaded file but not for one from the library', async () => {
+      startServer(topic([attachment({ id: 'a1', title: 'Exit map' }), attachment({ id: 'a2', title: 'Library film', source: 'library', position: 1 })]));
+      renderPanel();
+      await userEvent.click(await screen.findByRole('button', { name: 'Edit Exit map' }));
+      expect(within(screen.getByRole('dialog', { name: 'Edit attachment' })).getByLabelText('Cover image')).toBeInTheDocument();
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Edit attachment' })).getByRole('button', { name: 'Cancel' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Library film' }));
+      expect(within(screen.getByRole('dialog', { name: 'Edit attachment' })).queryByLabelText('Cover image')).toBeNull();
+    });
+
+    it('shows the description of an attachment under its title', async () => {
+      startServer(topic([attachment({ id: 'a1', title: 'Exit map', description: 'Where to go.' })]));
+      renderPanel();
+      expect(await screen.findByText('Where to go.')).toBeInTheDocument();
+    });
+
+    it('shows no way to delete a file to Staff', async () => {
+      startServer();
+      renderPanel();
+      await screen.findByRole('button', { name: 'Edit Exit map' });
+      expect(screen.queryByRole('button', { name: /^Delete / })).toBeNull();
+    });
+
+    it('asks first, then moves a file to the Trash and takes it off the list', async () => {
+      const calls = startServer(undefined, {}, ADMIN);
+      const { onChanged } = renderPanel();
+      await userEvent.click(await screen.findByRole('button', { name: 'Delete Exit map' }));
+      const dialog = screen.getByRole('dialog', { name: 'Delete attachment' });
+      expect(dialog).toHaveTextContent('Delete "Exit map"? It moves to the Trash');
+      expect(calls.some((call) => call.key.startsWith('DELETE'))).toBe(false);
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Trash' }));
+      expect(await screen.findByText('Attachment "Exit map" moved to the Trash.')).toBeInTheDocument();
+      expect(calls.some((call) => call.key === 'DELETE /api/attachments/a1')).toBe(true);
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Edit Exit map' })).toBeNull());
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    it('can be called off, and says what the server says inside the dialog when it fails', async () => {
+      const calls = startServer(undefined, { 'DELETE /api/attachments/a1': { status: 409, body: { message: 'This is still uploading. Cancel the upload instead.' } } }, ADMIN);
+      renderPanel();
+      await userEvent.click(await screen.findByRole('button', { name: 'Delete Exit map' }));
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Delete attachment' })).getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(calls.some((call) => call.key.startsWith('DELETE'))).toBe(false);
+      await userEvent.click(screen.getByRole('button', { name: 'Delete Exit map' }));
+      const dialog = screen.getByRole('dialog', { name: 'Delete attachment' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Trash' }));
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('Cancel the upload instead.');
     });
 
     it('moves an attachment down and sends the order of the ready attachments only', async () => {
@@ -521,7 +578,7 @@ describe('TopicPanel uploads', () => {
     const file = new File([new Uint8Array(10)], 'Exit map.pdf', { type: 'application/pdf' });
     await userEvent.upload(within(dialog).getByLabelText(/^File/), file);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Start upload' }));
-    await waitFor(() => expect(uploads.start).toHaveBeenCalledWith({ file, topicId: 't1', contentType: 'application/pdf', title: 'Exit map', durationSeconds: null }));
+    await waitFor(() => expect(uploads.start).toHaveBeenCalledWith({ file, topicId: 't1', contentType: 'application/pdf', title: 'Exit map', durationSeconds: null, description: '', cover: null }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Upload a file' })).toBeNull());
     await waitFor(() => expect(calls.filter((call) => call.key === 'GET /api/topics/t1')).toHaveLength(2));
     expect(onChanged).toHaveBeenCalled();

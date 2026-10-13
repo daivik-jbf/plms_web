@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, describeError } from '../../api/client';
-import { type Attachment, getTopic, openAttachment, renameAttachment, reorderAttachments, type TopicDetail } from '../../api/courses';
+import { type Attachment, deleteAttachment, getTopic, openAttachment, reorderAttachments, type TopicDetail } from '../../api/courses';
+import { useAuth } from '../../auth/AuthContext';
 import { Alert } from '../../components/Alert';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
 import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
 import { CATEGORIES } from '../../media/categories';
@@ -14,11 +17,12 @@ import { PlayerDialog, type VideoTarget } from '../media/PlayerDialog';
 import { AddAttachmentDialog } from './AddAttachmentDialog';
 import { AttachmentList } from './AttachmentList';
 import { AttachmentUploadDialog } from './AttachmentUploadDialog';
+import hub from './CoursesHub.module.css';
 import styles from './Courses.module.css';
+import { EditAttachmentDialog } from './EditAttachmentDialog';
 import { EditTopicDialog } from './EditTopicDialog';
 import { ImageDialog } from './ImageDialog';
 import { LibraryPickerDialog } from './LibraryPickerDialog';
-import { TitleDialog } from './TitleDialog';
 
 type Notice = { tone: 'error' | 'success'; text: string };
 
@@ -46,7 +50,11 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
   const [choosing, setChoosing] = useState(false);
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [renaming, setRenaming] = useState<Attachment | null>(null);
+  const [editingAttachment, setEditingAttachment] = useState<Attachment | null>(null);
+  const { state: auth } = useAuth();
+  const isAdmin = auth.status === 'authenticated' && auth.user.role === 'admin';
+  const [removing, setRemoving] = useState<Attachment | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoTarget | null>(null);
   const [image, setImage] = useState<Attachment | null>(null);
 
@@ -154,11 +162,32 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
     }
   }
 
+  async function confirmRemove() {
+    if (!removing) return;
+    setBusy(true);
+    setRemoveError(null);
+    try {
+      await deleteAttachment(removing.id);
+      setNotice({ tone: 'success', text: `Attachment "${removing.title}" moved to the Trash.` });
+      setRemoving(null);
+      await load();
+      onChanged();
+    } catch (error) {
+      setRemoveError(describeError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <div className={styles.topicHeader}>
-        <h2 className={styles.topicTitle}>{topic.title}</h2>
-        <Button variant="secondary" size="small" onClick={() => setEditing(true)}>
+        <div className={styles.topicHeading}>
+          {topic.coverUrl ? <img className={styles.topicCover} src={topic.coverUrl} alt="" /> : null}
+          <h2 className={styles.topicTitle}>{topic.title}</h2>
+        </div>
+        <Button variant="secondary" className={hub.addButton} onClick={() => setEditing(true)}>
+          <Icon name="edit" size={18} />
           Edit topic
         </Button>
       </div>
@@ -166,7 +195,8 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
 
       <div className={styles.sectionHeader}>
         <h3>Attachments</h3>
-        <Button size="small" onClick={() => setChoosing(true)}>
+        <Button className={hub.addButton} onClick={() => setChoosing(true)}>
+          <Icon name="plus" size={18} />
           Add
         </Button>
       </div>
@@ -179,7 +209,8 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
           busy={busy}
           progress={progress}
           onOpen={open}
-          onRename={setRenaming}
+          onEdit={setEditingAttachment}
+          onDelete={isAdmin ? setRemoving : undefined}
           onMove={(attachment, delta) => void move(attachment, delta)}
         />
       )}
@@ -234,19 +265,31 @@ export function TopicPanel({ topicId, courseTitle, lessonTitle, reloadKey, onCha
           onChanged();
         }}
       />
-      <TitleDialog
-        open={renaming !== null}
-        heading="Rename attachment"
-        label="Attachment title"
-        initial={renaming?.title ?? ''}
-        submitLabel="Save"
-        emptyMessage="Enter a title."
-        onSubmit={async (title) => {
-          await renameAttachment((renaming as Attachment).id, title);
-          setNotice({ tone: 'success', text: `Attachment renamed to "${title}".` });
-          await load();
+      <ConfirmDialog
+        open={removing !== null}
+        title="Delete attachment"
+        confirmLabel="Move to Trash"
+        tone="danger"
+        busy={busy}
+        error={removeError}
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => {
+          setRemoving(null);
+          setRemoveError(null);
         }}
-        onClose={() => setRenaming(null)}
+      >
+        {removing
+          ? `Delete "${removing.title}"? It moves to the Trash, and an Admin can restore it from there. ${removing.source === 'library' ? 'The file stays in the library.' : 'The uploaded file is kept until it is deleted for good.'}`
+          : ''}
+      </ConfirmDialog>
+      <EditAttachmentDialog
+        attachment={editingAttachment}
+        onClose={() => setEditingAttachment(null)}
+        onSaved={(title) => {
+          setNotice({ tone: 'success', text: `Attachment "${title}" saved.` });
+          void load();
+          onChanged();
+        }}
       />
       <PlayerDialog video={video} onClose={() => setVideo(null)} />
       <ImageDialog attachment={image} onClose={() => setImage(null)} />

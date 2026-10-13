@@ -43,6 +43,34 @@
       "when": 1791778897618,
       "tag": "0005_courses",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791793940041,
+      "tag": "0006_trash",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791799732532,
+      "tag": "0007_covers",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791803417507,
+      "tag": "0008_attachment_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791806888068,
+      "tag": "0009_attachment_trash",
+      "breakpoints": true
     }
   ]
 }

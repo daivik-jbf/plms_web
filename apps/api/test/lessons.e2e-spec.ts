@@ -40,7 +40,7 @@ describe('lessons', () => {
     it('adds a lesson at the end, trimmed, and answers the whole tree', async () => {
       const { owner, course } = await setup();
       const first = await http().post(`/api/courses/${course.id}/lessons`).set(...bearer(owner.session)).send({ title: '  Exits  ' }).expect(201);
-      expect(first.body.lessons).toEqual([{ id: expect.any(String), title: 'Exits', position: 0, topics: [] }]);
+      expect(first.body.lessons).toEqual([{ id: expect.any(String), title: 'Exits', position: 0, coverUrl: null, topics: [] }]);
       const second = await addLessonViaApi(app, owner.session, course.id, 'Alarms');
       expect(second.lessons.map((lesson) => [lesson.title, lesson.position])).toEqual([
         ['Exits', 0],

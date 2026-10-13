@@ -85,6 +85,18 @@ describe('UploadsProvider', () => {
     expect(screen.getByText('finished:1')).toBeInTheDocument();
   });
 
+  it('sends the cover of an attachment to the attachment, not to a library item, and keeps going if it fails', async () => {
+    const calls = startServer({
+      'POST /api/topics/t1/attachments/uploads': { status: 201, body: started },
+      'POST /api/attachments/v1/cover': { status: 422, body: { message: 'Covers can be at most 10 MB.' } },
+    });
+    setup();
+    await act(() => value.start({ file, topicId: 't1', contentType: 'video/mp4', title: 'Fire film', durationSeconds: 12, cover }));
+    expect(await screen.findByText('Fire film:done:10:true:')).toBeInTheDocument();
+    expect(calls.some((call) => call.key === 'POST /api/attachments/v1/cover')).toBe(true);
+    expect(calls.some((call) => call.key === 'POST /api/media/items/v1/cover')).toBe(false);
+  });
+
   it('keeps the topic of a refused start out of the list of jobs', async () => {
     startServer({ 'POST /api/topics/t1/attachments/uploads': { status: 400, body: { message: 'Validation failed', fieldErrors: { contentType: ['Attachments can be MP4 videos.'] } } } });
     setup();

@@ -198,6 +198,9 @@ export const courses = pgTable('courses', {
     .references(() => users.id),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  // In the Trash from this moment until it is restored or deleted for good.
+  deletedAt: timestamptz('deleted_at'),
+  deletedBy: uuid('deleted_by').references(() => users.id),
 });
 
 export const lessons = pgTable(
@@ -209,11 +212,14 @@ export const lessons = pgTable(
       .references(() => courses.id),
     title: text('title').notNull(),
     position: integer('position').notNull(),
+    coverFileId: uuid('cover_file_id').references(() => files.id),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+    deletedAt: timestamptz('deleted_at'),
+    deletedBy: uuid('deleted_by').references(() => users.id),
   },
   (table) => [index('lessons_course_idx').on(table.courseId, table.position)],
 );
@@ -228,11 +234,14 @@ export const topics = pgTable(
     title: text('title').notNull(),
     description: text('description'),
     position: integer('position').notNull(),
+    coverFileId: uuid('cover_file_id').references(() => files.id),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+    deletedAt: timestamptz('deleted_at'),
+    deletedBy: uuid('deleted_by').references(() => users.id),
   },
   (table) => [index('topics_lesson_idx').on(table.lessonId, table.position)],
 );
@@ -249,10 +258,17 @@ export const topicAttachments = pgTable(
     position: integer('position').notNull(),
     kind: attachmentKind('kind').notNull(),
     title: text('title'),
+    // Optional text about the file; a library attachment without one shows the description of its item.
+    description: text('description'),
     fileId: uuid('file_id').references(() => files.id),
     libraryItemId: uuid('library_item_id').references(() => mediaItems.id),
     durationSeconds: integer('duration_seconds'),
+    // An optional picture for an uploaded file (a library attachment shows its item's cover instead).
+    coverFileId: uuid('cover_file_id').references(() => files.id),
     status: mediaItemStatus('status').notNull(),
+    // In the Trash from this moment until it is restored or deleted for good.
+    deletedAt: timestamptz('deleted_at'),
+    deletedBy: uuid('deleted_by').references(() => users.id),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),

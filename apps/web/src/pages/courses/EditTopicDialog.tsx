@@ -1,11 +1,12 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { ApiError, describeError } from '../../api/client';
-import { type TopicView, updateTopic } from '../../api/courses';
+import { type TopicView, updateTopic, uploadTopicCover } from '../../api/courses';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
+import { checkCoverFile } from '../../uploads/limits';
 import media from '../media/Media.module.css';
 
 interface EditTopicDialogProps {
@@ -33,41 +34,54 @@ function EditForm({
   const titleRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState(topic.title);
   const [description, setDescription] = useState(topic.description ?? '');
-  const [errors, setErrors] = useState<{ title?: string; description?: string }>({});
+  const coverRef = useRef<HTMLInputElement>(null);
+  const [cover, setCover] = useState<File | null>(null);
+  const [errors, setErrors] = useState<{ title?: string; description?: string; cover?: string }>({});
   const [failure, setFailure] = useState<string | null>(null);
-  const [focusRequest, setFocusRequest] = useState<object | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ field: 'title' | 'cover' } | null>(null);
 
   useEffect(() => {
-    if (focusRequest) titleRef.current?.focus();
+    if (focusRequest) (focusRequest.field === 'title' ? titleRef : coverRef).current?.focus();
   }, [focusRequest]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setFailure(null);
-    if (!title.trim()) {
-      setErrors({ title: 'Enter a topic title.' });
-      setFocusRequest({});
+    const coverProblem = cover ? checkCoverFile(cover) : null;
+    if (!title.trim() || coverProblem) {
+      setErrors({ title: title.trim() ? undefined : 'Enter a topic title.', cover: coverProblem ?? undefined });
+      setFocusRequest({ field: title.trim() ? 'cover' : 'title' });
       return;
     }
     setErrors({});
     const changes: { title?: string; description?: string } = {};
     if (title.trim() !== topic.title) changes.title = title.trim();
     if (description.trim() !== (topic.description ?? '')) changes.description = description.trim();
-    if (Object.keys(changes).length === 0) {
+    if (Object.keys(changes).length === 0 && !cover) {
       onClose();
       return;
     }
     setBusy(true);
+    let saved = false;
     try {
-      await updateTopic(topic.id, changes);
+      if (Object.keys(changes).length > 0) {
+        await updateTopic(topic.id, changes);
+        saved = true;
+      }
+      if (cover) {
+        await uploadTopicCover(topic.id, cover);
+        saved = true;
+      }
       onSaved();
       onClose();
     } catch (caught) {
+      if (saved) onSaved();
       if (caught instanceof ApiError && (caught.fieldErrors.title || caught.fieldErrors.description)) {
         setErrors({ title: caught.fieldErrors.title?.join(' '), description: caught.fieldErrors.description?.join(' ') });
-        if (caught.fieldErrors.title) setFocusRequest({});
+        if (caught.fieldErrors.title) setFocusRequest({ field: 'title' });
       } else {
-        setFailure(describeError(caught));
+        const reason = describeError(caught);
+        setFailure(saved ? `Your changes were saved, but the cover image could not be added: ${reason}` : reason);
       }
     } finally {
       setBusy(false);
@@ -86,6 +100,15 @@ function EditForm({
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         error={errors.description}
+      />
+      <TextField
+        ref={coverRef}
+        label="Cover image"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hint={topic.coverUrl ? 'Choosing a file replaces the current cover. JPEG, PNG or WebP, up to 10 MB.' : 'Optional. JPEG, PNG or WebP, up to 10 MB.'}
+        onChange={(e) => setCover(e.target.files?.[0] ?? null)}
+        error={errors.cover}
       />
       <div className={media.dialogActions}>
         <Button variant="secondary" onClick={onClose} disabled={busy}>

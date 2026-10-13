@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, describeError } from '../../api/client';
-import { addLesson, addTopic, type CourseTree, getCourse, type LessonNode, renameLesson, reorderLessons, reorderTopics, type TopicSummary, updateTopic } from '../../api/courses';
+import { addLesson, addTopic, type CourseTree, deleteLesson, deleteTopic, getCourse, getTopic, type LessonNode, renameLesson, reorderLessons, reorderTopics, type TopicSummary, type TopicView, uploadLessonCover } from '../../api/courses';
+import { useAuth } from '../../auth/AuthContext';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
 import media from '../media/Media.module.css';
+import hub from './CoursesHub.module.css';
 import styles from './Courses.module.css';
 import { CourseOutline } from './CourseOutline';
+import { AddTopicDialog } from './AddTopicDialog';
+import { CoverDialog } from './CoverDialog';
 import { EditCourseDialog } from './EditCourseDialog';
+import { EditTopicDialog } from './EditTopicDialog';
 import { TitleDialog } from './TitleDialog';
+import { plural } from './CourseDetail';
 import { TopicPanel } from './TopicPanel';
 
 type Notice = { tone: 'error' | 'success'; text: string };
@@ -18,8 +26,7 @@ type Notice = { tone: 'error' | 'success'; text: string };
 type TitleMode =
   | { kind: 'add-lesson' }
   | { kind: 'rename-lesson'; lesson: LessonNode }
-  | { kind: 'add-topic'; lesson: LessonNode }
-  | { kind: 'rename-topic'; topic: TopicSummary };
+  | { kind: 'add-topic'; lesson: LessonNode };
 
 // The key gives every course its own page state when moving from one to another.
 export function CoursePage() {
@@ -34,10 +41,16 @@ function Course({ courseId }: { courseId: string }) {
   const [missing, setMissing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [coverOf, setCoverOf] = useState<LessonNode | null>(null);
+  const [editingTopic, setEditingTopic] = useState<TopicView | null>(null);
   const [titleMode, setTitleMode] = useState<TitleMode | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const { state: auth } = useAuth();
+  const isAdmin = auth.status === 'authenticated' && auth.user.role === 'admin';
+  const [removing, setRemoving] = useState<{ kind: 'lesson'; lesson: LessonNode } | { kind: 'topic'; topic: TopicSummary } | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -62,7 +75,7 @@ function Course({ courseId }: { courseId: string }) {
   useEffect(() => {
     const before = shownTopic.current;
     shownTopic.current = topicId;
-    if (before === topicId || !window.matchMedia?.('(max-width: 760px)').matches) return;
+    if (before === topicId || !window.matchMedia?.('(max-width: 900px)').matches) return;
     if (topicId) {
       topicPane.current?.querySelector<HTMLElement>(`.${styles.back}`)?.focus();
     } else if (before) {
@@ -121,7 +134,7 @@ function Course({ courseId }: { courseId: string }) {
   }
 
   // Sends a title from the dialog; the dialog explains a failure, and closes when this resolves.
-  const sendTitle = async (mode: TitleMode, title: string): Promise<void> => {
+  const sendTitle = async (mode: TitleMode, title: string, description = ''): Promise<void> => {
     switch (mode.kind) {
       case 'add-lesson':
         setTree(await addLesson(tree.id, title));
@@ -132,25 +145,50 @@ function Course({ courseId }: { courseId: string }) {
         setNotice({ tone: 'success', text: `Lesson renamed to "${title}".` });
         break;
       case 'add-topic':
-        setTree(await addTopic(mode.lesson.id, title));
+        setTree(await addTopic(mode.lesson.id, title, description));
         setNotice({ tone: 'success', text: `Topic "${title}" added.` });
-        break;
-      case 'rename-topic':
-        await updateTopic(mode.topic.id, { title });
-        setNotice({ tone: 'success', text: `Topic renamed to "${title}".` });
-        await load();
-        // The open topic may be the one that was renamed.
-        setReloadKey((key) => key + 1);
         break;
     }
   };
+
+  // Any topic of the tree can be edited, not only the one that is open: its text is read first, for the form.
+  async function editTopic(topic: TopicSummary) {
+    setNotice(null);
+    try {
+      setEditingTopic(await getTopic(topic.id));
+    } catch (error) {
+      setNotice({ tone: 'error', text: describeError(error) });
+    }
+  }
+
+  async function confirmRemove() {
+    if (!removing) return;
+    setBusy(true);
+    setRemoveError(null);
+    try {
+      if (removing.kind === 'lesson') {
+        setTree(await deleteLesson(removing.lesson.id));
+        setNotice({ tone: 'success', text: `Lesson "${removing.lesson.title}" moved to the Trash.` });
+        // The open topic may have been in the lesson that went.
+        if (topicId && removing.lesson.topics.some((topic) => topic.id === topicId)) setParams({});
+      } else {
+        setTree(await deleteTopic(removing.topic.id));
+        setNotice({ tone: 'success', text: `Topic "${removing.topic.title}" moved to the Trash.` });
+        if (topicId === removing.topic.id) setParams({});
+      }
+      setRemoving(null);
+    } catch (error) {
+      setRemoveError(describeError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const dialog = titleMode
     ? {
         'add-lesson': { heading: 'Add lesson', label: 'Lesson title', initial: '', submitLabel: 'Add lesson', emptyMessage: 'Enter a lesson title.' },
         'rename-lesson': { heading: 'Rename lesson', label: 'Lesson title', initial: titleMode.kind === 'rename-lesson' ? titleMode.lesson.title : '', submitLabel: 'Save', emptyMessage: 'Enter a lesson title.' },
         'add-topic': { heading: 'Add topic', label: 'Topic title', initial: '', submitLabel: 'Add topic', emptyMessage: 'Enter a topic title.' },
-        'rename-topic': { heading: 'Rename topic', label: 'Topic title', initial: titleMode.kind === 'rename-topic' ? titleMode.topic.title : '', submitLabel: 'Save', emptyMessage: 'Enter a topic title.' },
       }[titleMode.kind]
     : null;
 
@@ -159,23 +197,46 @@ function Course({ courseId }: { courseId: string }) {
       <nav aria-label="Breadcrumb" className={media.crumbs}>
         <Link to="/courses">Courses</Link> › {tree.title}
       </nav>
-      <div className={media.header}>
-        <h1>{tree.title}</h1>
-        <Button onClick={() => setEditing(true)}>Edit course</Button>
-      </div>
-      {tree.coverUrl || tree.description ? (
-        <div className={styles.hero}>
-          {tree.coverUrl ? <img className={styles.cover} src={tree.coverUrl} alt="" /> : null}
-          {tree.description ? <p className={styles.about}>{tree.description}</p> : null}
+      <div className={hub.banner}>
+        <span className={hub.bannerTile} aria-hidden="true">
+          {tree.coverUrl ? <img src={tree.coverUrl} alt="" /> : <Icon name="book" size={44} />}
+        </span>
+        <div className={hub.bannerText}>
+          <h1 className={hub.bannerTitle}>{tree.title}</h1>
+          <p className={hub.bannerCounts}>
+            <span>
+              <Icon name="book" size={18} /> {plural(tree.lessons.length, 'Lesson')}
+            </span>
+            <span aria-hidden="true">•</span>
+            <span>
+              <Icon name="tag" size={18} /> {plural(tree.lessons.reduce((sum, lesson) => sum + lesson.topics.length, 0), 'Topic')}
+            </span>
+          </p>
         </div>
-      ) : null}
+        <div className={hub.bannerActions}>
+          <Link className={hub.bannerBack} to={`/courses?course=${tree.id}`}>
+            <Icon name="back" size={18} />
+            Back to Courses
+          </Link>
+          <button type="button" className={hub.bannerButton} onClick={() => setEditing(true)}>
+            <Icon name="edit" size={18} />
+            Edit course
+          </button>
+        </div>
+        {tree.description ? <p className={hub.bannerAbout}>{tree.description}</p> : null}
+      </div>
 
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
 
       <div className={styles.panes} data-view={topicId ? 'topic' : 'tree'}>
         <section ref={treePane} className={styles.treePane} aria-label="Lessons and topics">
           <div className={styles.treeHeader}>
-            <Button size="small" onClick={() => setTitleMode({ kind: 'add-lesson' })}>
+            <h2 className={styles.treeTitle}>
+              <Icon name="book" size={22} />
+              Lessons ({tree.lessons.length})
+            </h2>
+            <Button className={hub.addButton} onClick={() => setTitleMode({ kind: 'add-lesson' })}>
+              <Icon name="plus" size={18} />
               Add lesson
             </Button>
           </div>
@@ -189,7 +250,10 @@ function Course({ courseId }: { courseId: string }) {
               onSelectTopic={(id) => setParams({ topic: id })}
               onAddTopic={(lesson) => setTitleMode({ kind: 'add-topic', lesson })}
               onRenameLesson={(lesson) => setTitleMode({ kind: 'rename-lesson', lesson })}
-              onRenameTopic={(topic) => setTitleMode({ kind: 'rename-topic', topic })}
+              onEditTopic={(topic) => void editTopic(topic)}
+              onCoverLesson={(lesson) => setCoverOf(lesson)}
+              onDeleteLesson={isAdmin ? (lesson) => setRemoving({ kind: 'lesson', lesson }) : undefined}
+              onDeleteTopic={isAdmin ? (topic) => setRemoving({ kind: 'topic', topic }) : undefined}
               onMoveLesson={(lesson, delta) =>
                 void move(`lesson "${lesson.title}"`, delta, () =>
                   reorderLessons(
@@ -235,9 +299,55 @@ function Course({ courseId }: { courseId: string }) {
         </section>
       </div>
 
+      <EditTopicDialog
+        topic={editingTopic}
+        onClose={() => setEditingTopic(null)}
+        onSaved={() => {
+          setNotice({ tone: 'success', text: 'Topic saved.' });
+          void load();
+          // The open topic may be the one that was edited.
+          setReloadKey((key) => key + 1);
+        }}
+      />
+      <CoverDialog
+        open={coverOf !== null}
+        title="Lesson cover"
+        subject={coverOf?.title ?? ''}
+        currentUrl={coverOf?.coverUrl ?? null}
+        onClose={() => setCoverOf(null)}
+        onSave={async (file) => {
+          if (!coverOf) return;
+          setTree(await uploadLessonCover(coverOf.id, file));
+          setNotice({ tone: 'success', text: `Cover of the lesson "${coverOf.title}" saved.` });
+        }}
+      />
+      <ConfirmDialog
+        open={removing !== null}
+        title={removing?.kind === 'topic' ? 'Delete topic' : 'Delete lesson'}
+        confirmLabel="Move to Trash"
+        tone="danger"
+        busy={busy}
+        error={removeError}
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => {
+          setRemoving(null);
+          setRemoveError(null);
+        }}
+      >
+        {removing?.kind === 'topic'
+          ? `Delete the topic "${removing.topic.title}"? It moves to the Trash with its files. An Admin can restore it from there.`
+          : removing?.kind === 'lesson'
+            ? `Delete the lesson "${removing.lesson.title}"? It moves to the Trash with its ${plural(removing.lesson.topics.length, 'topic')} and their files. An Admin can restore it from there.`
+            : ''}
+      </ConfirmDialog>
       <EditCourseDialog course={editing ? tree : null} onClose={() => setEditing(false)} onChanged={() => void load()} />
+      <AddTopicDialog
+        open={titleMode?.kind === 'add-topic'}
+        onSubmit={(title, description) => (titleMode ? sendTitle(titleMode, title, description) : Promise.resolve())}
+        onClose={() => setTitleMode(null)}
+      />
       <TitleDialog
-        open={titleMode !== null}
+        open={titleMode !== null && titleMode.kind !== 'add-topic'}
         heading={dialog?.heading ?? ''}
         label={dialog?.label ?? ''}
         initial={dialog?.initial ?? ''}

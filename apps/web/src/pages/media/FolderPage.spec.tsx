@@ -121,10 +121,10 @@ describe('FolderPage', () => {
     expect(await screen.findByRole('heading', { name: 'Safety Training' })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Videos');
     expect(screen.getByRole('link', { name: 'Videos' })).toHaveAttribute('href', '/videos');
-    const row = screen.getByRole('row', { name: /Fire exits/ });
-    expect(within(row).getByText('12:04')).toBeInTheDocument();
-    expect(within(row).getByText('412 MB')).toBeInTheDocument();
-    expect(within(row).getByText(/Anita Rao/)).toBeInTheDocument();
+    const row = screen.getByRole('button', { name: 'Fire exits' }).closest('li') as HTMLElement;
+    expect(row).toHaveTextContent('12:04');
+    expect(row).toHaveTextContent('412 MB');
+    expect(row).toHaveTextContent('Anita Rao');
   });
 
   it('shows a cover picture where there is one and a placeholder where there is not', async () => {
@@ -140,7 +140,7 @@ describe('FolderPage', () => {
   it('shows your uploading video with a badge, no actions, and hostile text as plain text', async () => {
     startServer();
     renderPage();
-    const row = (await screen.findByText('<b>Kitchen</b> hygiene')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('<b>Kitchen</b> hygiene')).closest('li') as HTMLElement;
     expect(within(row).getByText('Uploading')).toBeInTheDocument();
     expect(within(row).queryByRole('button')).toBeNull();
     expect(document.querySelector('b')).toBeNull();
@@ -179,7 +179,7 @@ describe('FolderPage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(document.querySelector('video')).toBeNull());
 
-    await userEvent.click(screen.getByText('12:04'));
+    await userEvent.click(screen.getByText(/12:04/));
     expect(await screen.findByRole('dialog', { name: 'Fire exits' })).toBeInTheDocument();
   });
 
@@ -224,11 +224,11 @@ describe('FolderPage', () => {
     const calls = startServer();
     renderPage();
     await screen.findByRole('heading', { name: 'Safety Training' });
-    expect(screen.getByRole('button', { name: 'Move Fire exits up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move First aid basics down' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Fire exits up' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Move First aid basics down' })).toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(screen.getByRole('button', { name: 'Move Fire exits down' }));
     await waitFor(() => expect(calls.find((call) => call.key === 'PUT /api/media/folders/f1/items/order')?.body).toEqual({ ids: ['v2', 'v1'] }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Fire exits up' })).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Fire exits up' })).not.toHaveAttribute('aria-disabled'));
   });
 
   it('reloads and explains when the order changed under you', async () => {
@@ -355,16 +355,16 @@ describe('FolderPage for the other categories', () => {
   ];
   const songLink = { body: { url: 'https://cdn.example/s1?sig=1', expiresAt: '2026-10-09T11:00:00Z', contentType: 'audio/mpeg' } };
 
-  it('uses the words of the category and shows a ♪ for songs without a cover', async () => {
+  it('uses the words of the category and shows an icon for songs without a cover', async () => {
     startServer({}, songs, [songFolder], 'songs');
     renderPage('/songs/f1', fakeUploads(), SONGS);
     expect(await screen.findByRole('heading', { name: 'Road trip' })).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link', { name: 'Songs' })).toHaveAttribute('href', '/songs');
     expect(screen.getByRole('button', { name: 'Upload song' })).toBeInTheDocument();
-    const table = screen.getByRole('table', { name: 'Songs in this folder' });
-    expect(within(table).getByRole('columnheader', { name: 'Song' })).toBeInTheDocument();
-    expect(within(table).getAllByText('♪')).toHaveLength(2);
-    expect(within(table).getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Songs in this folder' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(list).getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Play Morning song' })).toBeInTheDocument();
     expect(document.querySelector('img')).toBeNull();
   });
 
@@ -389,7 +389,7 @@ describe('FolderPage for the other categories', () => {
     expect(player.play).toHaveBeenCalledWith({ link: expect.any(Function), title: 'Morning song', place: 'Songs › Road trip', coverUrl: null });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Morning song' })).toBeNull();
-    await userEvent.click(screen.getByText('3:05'));
+    await userEvent.click(screen.getByText(/3:05/));
     expect(player.play).toHaveBeenCalledTimes(1);
     expect(calls.some((call) => call.key.endsWith('/play'))).toBe(false);
   });

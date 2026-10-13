@@ -134,12 +134,13 @@ describe('courses', () => {
             id: first.id,
             title: 'First lesson',
             position: 0,
+            coverUrl: null,
             topics: [
-              { id: t1.id, title: 'Topic A', position: 0, attachmentCount: 0 },
-              { id: t2.id, title: 'Topic B', position: 1, attachmentCount: 0 },
+              { id: t1.id, title: 'Topic A', position: 0, coverUrl: null, attachmentCount: 0 },
+              { id: t2.id, title: 'Topic B', position: 1, coverUrl: null, attachmentCount: 0 },
             ],
           },
-          { id: second.id, title: 'Second lesson', position: 1, topics: [] },
+          { id: second.id, title: 'Second lesson', position: 1, coverUrl: null, topics: [] },
         ],
       });
     });

@@ -6,7 +6,7 @@ import type { Database } from '../src/db/db.module';
 import { auditLog, mediaItems, topicAttachments, topics } from '../src/db/schema';
 import { bearer } from './helpers/auth';
 import { createTestApp } from './helpers/app';
-import { createCourseViaApi, seedAttachment, seedLesson, seedTopic, whileHolding } from './helpers/courses';
+import { startAttachmentUploadViaApi, createCourseViaApi, seedAttachment, seedLesson, seedTopic, whileHolding } from './helpers/courses';
 import { seedFolder, seedItem, signIn, uniqueName } from './helpers/media';
 import type { InMemoryStorage } from './support/in-memory-storage';
 
@@ -65,6 +65,7 @@ describe('topic attachments', () => {
         position: 0,
         kind: 'video',
         title: 'Library video',
+        description: null,
         source: 'library',
         status: 'ready',
         sizeBytes: 300,
@@ -246,6 +247,53 @@ describe('topic attachments', () => {
       });
       await http().patch(`/api/attachments/${seeded.attachmentId}`).set(...bearer(owner.session)).send({ title: 'Exit map' }).expect(200);
       expect(await auditFor('content.attachment.renamed', seeded.attachmentId)).toHaveLength(1);
+    });
+
+    it('changes the description, records before and after, and an empty one clears it', async () => {
+      const { owner, topic } = await setup();
+      const seeded = await seedAttachment(db, { topicId: topic.id, createdBy: owner.user.id, title: 'Map', storage });
+      const res = await http().patch(`/api/attachments/${seeded.attachmentId}`).set(...bearer(owner.session)).send({ description: '  Where to go.  ' }).expect(200);
+      expect(res.body).toMatchObject({ title: 'Map', description: 'Where to go.' });
+      const [entry] = await auditFor('content.attachment.edited', seeded.attachmentId);
+      expect(entry).toMatchObject({ targetLabel: 'Map', changes: { description: { before: null, after: 'Where to go.' } } });
+      expect(await auditFor('content.attachment.renamed', seeded.attachmentId)).toHaveLength(0);
+      const cleared = await http().patch(`/api/attachments/${seeded.attachmentId}`).set(...bearer(owner.session)).send({ description: '' }).expect(200);
+      expect(cleared.body.description).toBeNull();
+      await http().patch(`/api/attachments/${seeded.attachmentId}`).set(...bearer(owner.session)).send({ description: null }).expect(200);
+      expect(await auditFor('content.attachment.edited', seeded.attachmentId)).toHaveLength(2);
+    });
+
+    it('changes title and description together in one entry, and refuses an empty change or a description that is too long', async () => {
+      const { owner, topic } = await setup();
+      const seeded = await seedAttachment(db, { topicId: topic.id, createdBy: owner.user.id, title: 'Map', storage });
+      await http().patch(`/api/attachments/${seeded.attachmentId}`).set(...bearer(owner.session)).send({ title: 'Exit map', description: 'Text' }).expect(200);
+      const [entry] = await auditFor('content.attachment.edited', seeded.attachmentId);
+      expect(entry.changes).toEqual({ title: { before: 'Map', after: 'Exit map' }, description: { before: null, after: 'Text' } });
+      await http().patch(`/api/attachments/${seeded.attachmentId}`).set(...bearer(owner.session)).send({}).expect(400);
+      await http().patch(`/api/attachments/${seeded.attachmentId}`).set(...bearer(owner.session)).send({ description: 'x'.repeat(2001) }).expect(400);
+    });
+
+    it('shows the description of the library item until the attachment has one of its own', async () => {
+      const { owner, topic, folder } = await setup();
+      const item = await seedItem(db, { folderId: folder.id, createdBy: owner.user.id, title: 'Library title', description: 'From the library', storage });
+      const attached = await libraryAttach(owner.session, topic.id, { itemId: item.itemId }).expect(201);
+      expect(attached.body.description).toBe('From the library');
+      const own = await http().patch(`/api/attachments/${attached.body.id}`).set(...bearer(owner.session)).send({ description: 'Our words' }).expect(200);
+      expect(own.body.description).toBe('Our words');
+    });
+
+    it('takes a description when a library item is attached', async () => {
+      const { owner, topic, folder } = await setup();
+      const item = await seedItem(db, { folderId: folder.id, createdBy: owner.user.id, title: 'Library title', storage });
+      const attached = await libraryAttach(owner.session, topic.id, { itemId: item.itemId, description: 'Watch this first.' }).expect(201);
+      expect(attached.body.description).toBe('Watch this first.');
+    });
+
+    it('takes a description when an upload into the topic is started', async () => {
+      const { owner, topic } = await setup();
+      const started = await startAttachmentUploadViaApi(app, owner.session, topic.id, { description: 'The floor plan.' });
+      const detail = await http().get(`/api/topics/${topic.id}`).set(...bearer(owner.session)).expect(200);
+      expect(detail.body.attachments.find((entry: { id: string }) => entry.id === started.itemId)).toMatchObject({ description: 'The floor plan.' });
     });
 
     it('records the library title as the old name when a library attachment is renamed first', async () => {

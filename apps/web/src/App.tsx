@@ -16,6 +16,7 @@ import { CoursesPage } from './pages/courses/CoursesPage';
 import { CategoryPage } from './pages/media/CategoryPage';
 import { FolderPage } from './pages/media/FolderPage';
 import { StaffPage } from './pages/staff/StaffPage';
+import { TrashPage } from './pages/trash/TrashPage';
 
 export function App() {
   return (
@@ -44,6 +45,7 @@ export function App() {
           <Route element={<AdminRoute />}>
             <Route path="/staff" element={<StaffPage />} />
             <Route path="/audit" element={<AuditPage />} />
+            <Route path="/trash" element={<TrashPage />} />
           </Route>
         </Route>
       </Route>

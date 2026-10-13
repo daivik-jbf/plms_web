@@ -23,7 +23,7 @@ function setup(selectedTopicId: string | null = null, busy = false) {
     onSelectTopic: vi.fn(),
     onAddTopic: vi.fn(),
     onRenameLesson: vi.fn(),
-    onRenameTopic: vi.fn(),
+    onEditTopic: vi.fn(),
     onMoveLesson: vi.fn(),
     onMoveTopic: vi.fn(),
   };
@@ -169,6 +169,35 @@ describe('CourseOutline', () => {
 describe('CourseOutline row actions', () => {
   const row = (name: string) => within(screen.getByRole('treeitem', { name }));
 
+  it('has no delete buttons unless the page gives the handlers (Staff are never given them)', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: /^Delete/ })).toBeNull();
+  });
+
+  it('gives each row a Delete button named after it when the handlers are given, and hands over the row', async () => {
+    const onDeleteLesson = vi.fn();
+    const onDeleteTopic = vi.fn();
+    render(
+      <CourseOutline
+        lessons={lessons}
+        selectedTopicId={null}
+        busy={false}
+        onSelectTopic={vi.fn()}
+        onAddTopic={vi.fn()}
+        onRenameLesson={vi.fn()}
+        onEditTopic={vi.fn()}
+        onMoveLesson={vi.fn()}
+        onMoveTopic={vi.fn()}
+        onDeleteLesson={onDeleteLesson}
+        onDeleteTopic={onDeleteTopic}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Delete lesson Exits' }));
+    expect(onDeleteLesson).toHaveBeenCalledWith(lessons[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Delete topic Alarms' }));
+    expect(onDeleteTopic).toHaveBeenCalledWith(lessons[0]!.topics[1]);
+  });
+
   it('gives a lesson Add topic, Rename and Move up and down, and a topic Rename and Move up and down, each named after its row', () => {
     setup();
     const lesson = row('Exits');
@@ -176,7 +205,7 @@ describe('CourseOutline row actions', () => {
     expect(lesson.getByRole('button', { name: 'Rename lesson Exits' })).toBeInTheDocument();
     expect(lesson.getByRole('button', { name: 'Move lesson Exits up' })).toBeInTheDocument();
     expect(lesson.getByRole('button', { name: 'Move lesson Exits down' })).toBeInTheDocument();
-    expect(lesson.getByRole('button', { name: 'Rename topic Fire exits' })).toBeInTheDocument();
+    expect(lesson.getByRole('button', { name: 'Edit topic Fire exits' })).toBeInTheDocument();
     expect(lesson.getByRole('button', { name: 'Move topic Fire exits up' })).toBeInTheDocument();
     expect(lesson.getByRole('button', { name: 'Move topic Fire exits down' })).toBeInTheDocument();
   });
@@ -212,7 +241,7 @@ describe('CourseOutline row actions', () => {
   });
 
   it('keeps the keyboard on the Move button that was pressed while the row moves', async () => {
-    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onRenameLesson: vi.fn(), onRenameTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
+    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onRenameLesson: vi.fn(), onEditTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
     const view = render(<CourseOutline lessons={lessons} selectedTopicId={null} busy={false} {...handlers} />);
     const button = screen.getByRole('button', { name: 'Move lesson Exits down' });
     button.focus();
@@ -228,7 +257,7 @@ describe('CourseOutline row actions', () => {
   });
 
   it('does not take the keyboard back from somewhere else it has gone since', async () => {
-    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onRenameLesson: vi.fn(), onRenameTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
+    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onRenameLesson: vi.fn(), onEditTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
     const view = render(<CourseOutline lessons={lessons} selectedTopicId={null} busy={false} {...handlers} />);
     screen.getByRole('button', { name: 'Move lesson Exits down' }).focus();
     await userEvent.keyboard('{Enter}');
@@ -245,8 +274,8 @@ describe('CourseOutline row actions', () => {
     expect(handlers.onAddTopic).toHaveBeenCalledWith(lessons[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Rename lesson Exits' }));
     expect(handlers.onRenameLesson).toHaveBeenCalledWith(lessons[0]);
-    await userEvent.click(screen.getByRole('button', { name: 'Rename topic Alarms' }));
-    expect(handlers.onRenameTopic).toHaveBeenCalledWith(lessons[0]!.topics[1]);
+    await userEvent.click(screen.getByRole('button', { name: 'Edit topic Alarms' }));
+    expect(handlers.onEditTopic).toHaveBeenCalledWith(lessons[0]!.topics[1]);
     await userEvent.click(screen.getByRole('button', { name: 'Move lesson Exits down' }));
     expect(handlers.onMoveLesson).toHaveBeenCalledWith(lessons[0], 1);
     await userEvent.click(screen.getByRole('button', { name: 'Move topic Alarms up' }));
@@ -256,7 +285,7 @@ describe('CourseOutline row actions', () => {
   it('does not open, close or choose anything when an action is clicked', async () => {
     const handlers = setup();
     await userEvent.click(screen.getByRole('button', { name: 'Rename lesson Exits' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Rename topic Alarms' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit topic Alarms' }));
     expect(screen.getByRole('treeitem', { name: 'Exits' })).toHaveAttribute('aria-expanded', 'true');
     expect(handlers.onSelectTopic).not.toHaveBeenCalled();
   });
@@ -267,7 +296,7 @@ describe('CourseOutline row actions', () => {
     expect(tabbable()).toEqual(['Add a topic to Exits', 'Rename lesson Exits', 'Move lesson Exits up', 'Move lesson Exits down']);
     await userEvent.tab();
     await userEvent.keyboard('{ArrowDown}');
-    expect(tabbable()).toEqual(['Rename topic Fire exits', 'Move topic Fire exits up', 'Move topic Fire exits down']);
+    expect(tabbable()).toEqual(['Edit topic Fire exits', 'Move topic Fire exits up', 'Move topic Fire exits down']);
   });
 
   it('leaves the arrow keys to a button that has the focus', async () => {

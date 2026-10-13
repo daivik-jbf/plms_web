@@ -38,8 +38,12 @@ async function removeAttachment(tx: DbTransaction, fileId: string): Promise<Remo
   const [attachment] = await tx
     .delete(topicAttachments)
     .where(and(eq(topicAttachments.fileId, fileId), eq(topicAttachments.status, 'uploading')))
-    .returning({ id: topicAttachments.id, title: topicAttachments.title });
+    .returning({ id: topicAttachments.id, title: topicAttachments.title, coverFileId: topicAttachments.coverFileId });
   if (!attachment) return null;
   await tx.delete(files).where(eq(files.id, fileId));
-  return { target: { type: 'attachment', id: attachment.id, label: attachment.title ?? '' }, cover: null };
+  let cover: RemovedUpload['cover'] = null;
+  if (attachment.coverFileId) {
+    [cover = null] = await tx.delete(files).where(eq(files.id, attachment.coverFileId)).returning({ id: files.id, storageKey: files.storageKey });
+  }
+  return { target: { type: 'attachment', id: attachment.id, label: attachment.title ?? '' }, cover };
 }

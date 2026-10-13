@@ -1,7 +1,8 @@
 .shell {
   display: grid;
-  grid-template-columns: 14rem 1fr;
+  grid-template-columns: 17.75rem 1fr;
   min-height: 100vh;
+  background: var(--color-page);
 }
 
 /* While the docked player shows: the page scrolls clear of the bar, and the upload panel (which reads
@@ -12,17 +13,58 @@
 }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   padding: var(--space-6) 0;
-  border-right: 1px solid var(--color-border);
-  background: var(--color-surface);
+  overflow-y: auto;
+  background: linear-gradient(180deg, var(--color-sidebar) 0%, var(--color-sidebar-deep) 100%);
+  color: #ffffff;
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   margin: 0 0 var(--space-6);
   padding: 0 var(--space-6);
-  color: var(--color-primary);
+  line-height: 1.2;
+}
+
+.brandMark {
+  flex: none;
+}
+
+.brandName {
+  display: block;
+  font-size: 1.25rem;
   font-weight: 600;
-  line-height: 1.25;
+}
+
+.brandSub {
+  display: block;
+  color: rgb(255 255 255 / 0.85);
+  font-size: var(--text-sm);
+}
+
+.nav {
+  flex: 1;
+}
+
+.divider {
+  margin: 0 var(--space-6) var(--space-4);
+  border: 0;
+  border-top: 1px solid rgb(255 255 255 / 0.18);
+}
+
+.tagline {
+  margin: var(--space-6) 0 0;
+  padding: 0 var(--space-6);
+  color: rgb(255 255 255 / 0.9);
+  font-size: var(--text-sm);
+  text-align: center;
 }
 
 .column {
@@ -34,10 +76,48 @@
 .topBar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-6);
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-8);
   border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.search {
+  position: relative;
+  flex: 1;
+  max-width: 32rem;
+  margin-right: auto;
+}
+
+.searchIcon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-4);
+  color: var(--color-text-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.searchInput {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4) var(--space-2) 2.75rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: #eef3f9;
+  color: var(--color-text);
+  font: inherit;
+}
+
+.searchInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+.searchInput:focus-visible {
+  border-color: var(--color-primary);
+  outline: var(--focus-outline);
+  outline-offset: 1px;
 }
 
 .menuButton {
@@ -46,15 +126,38 @@
 }
 
 .who {
-  color: var(--color-text-muted);
+  display: flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.signOut {
+  gap: var(--space-2);
+  white-space: nowrap;
 }
 
 .main {
   flex: 1;
-  padding: var(--space-8) var(--space-6);
+  padding: var(--space-6) var(--space-8) var(--space-8);
 }
 
-@media (max-width: 760px) {
+/* A tablet in portrait and smaller: the menu becomes a drawer behind the Menu button. */
+@media (max-width: 1024px) {
   .shell {
     grid-template-columns: 1fr;
   }
@@ -68,10 +171,31 @@
   }
 
   .topBar {
+    gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
   }
 
   .main {
     padding: var(--space-6) var(--space-4);
   }
+}
+
+@media (max-width: 760px) {
+  .who span:last-child {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .search {
+    display: none;
+  }
+}
+
+.drawerNav {
+  margin: calc(var(--space-6) * -1);
+  padding: var(--space-4) 0;
+  /* Fills the drawer from the title to the bottom edge. */
+  min-height: calc(100dvh - 4.3rem);
+  background: linear-gradient(180deg, var(--color-sidebar) 0%, var(--color-sidebar-deep) 100%);
 }

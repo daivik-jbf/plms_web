@@ -4,6 +4,9 @@ import { ApiError, describeError } from '../../api/client';
 import { type Folder, listFolders, listItems, type MediaItem, playItem, reorderItems } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
+import { plural } from '../../lib/format';
+import hub from '../courses/CoursesHub.module.css';
 import { EmptyState } from '../../components/EmptyState';
 import { Skeleton } from '../../components/Skeleton';
 import type { CategoryConfig } from '../../media/categories';
@@ -11,7 +14,7 @@ import { usePlayer } from '../../player/PlayerContext';
 import { MEDIA_KINDS } from '../../uploads/limits';
 import { useUploads } from '../../uploads/UploadsContext';
 import { EditItemDialog } from './EditItemDialog';
-import { ItemsTable } from './ItemsTable';
+import { ItemsList } from './ItemsList';
 import styles from './Media.module.css';
 import { PendingUploads } from './PendingUploads';
 import { PlayerDialog, type VideoTarget } from './PlayerDialog';
@@ -100,9 +103,28 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
       <nav aria-label="Breadcrumb" className={styles.crumbs}>
         <Link to={`/${category.slug}`}>{category.label}</Link> › {folder?.name ?? ''}
       </nav>
-      <div className={styles.header}>
-        <h1>{folder?.name ?? 'Folder'}</h1>
-        <Button onClick={() => setUploading(true)}>{`Upload ${category.noun}`}</Button>
+      <div className={hub.banner}>
+        <span className={hub.bannerTile} aria-hidden="true">
+          <Icon name="folder" size={44} />
+        </span>
+        <div className={hub.bannerText}>
+          <h1 className={hub.bannerTitle}>{folder?.name ?? 'Folder'}</h1>
+          <p className={hub.bannerCounts}>
+            <span>
+              <Icon name={category.icon} size={18} /> {items ? plural(items.length, category.nounTitle) : ''}
+            </span>
+          </p>
+        </div>
+        <div className={hub.bannerActions}>
+          <Link className={hub.bannerBack} to={`/${category.slug}`}>
+            <Icon name="back" size={18} />
+            {`Back to ${category.label}`}
+          </Link>
+          <button type="button" className={hub.bannerButton} onClick={() => setUploading(true)}>
+            <Icon name="plus" size={18} />
+            {`Upload ${category.noun}`}
+          </button>
+        </div>
       </div>
 
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
@@ -125,7 +147,7 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
       ) : items.length === 0 ? (
         <EmptyState title={`No ${category.nounPlural} in this folder yet`}>{`${category.label} you upload here will appear in this list.`}</EmptyState>
       ) : (
-        <ItemsTable
+        <ItemsList
           category={category}
           items={items}
           busy={busy}

@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import type { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { Roles } from '../auth/roles.decorator';
 import { ZodPipe } from '../common/zod.pipe';
 import { type CoverStartInput, coverStartSchema, orderSchema } from '../media/media.schemas';
 import {
@@ -50,6 +51,14 @@ export class CoursesController {
     @Body(new ZodPipe(updateCourseSchema)) body: UpdateCourseInput,
   ): Promise<CourseTree> {
     return this.courses.update(actor, id, body);
+  }
+
+  // Admins only: the course goes to the Trash, where an Admin can restore it.
+  @Delete(':id')
+  @Roles('admin')
+  @HttpCode(204)
+  remove(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.courses.remove(actor, id);
   }
 
   @Post(':id/cover')

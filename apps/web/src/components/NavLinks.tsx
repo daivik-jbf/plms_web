@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import type { User } from '../api/auth';
+import { Icon } from './Icon';
 import styles from './NavLinks.module.css';
 import { NAV_GROUPS, NAV_ITEMS } from './nav-items';
 
@@ -22,7 +23,8 @@ export function NavLinks({ role, onNavigate }: { role: User['role']; onNavigate?
                     onClick={onNavigate}
                     className={({ isActive }) => `${styles.link} ${isActive ? styles.active : ''}`}
                   >
-                    {item.label}
+                    <Icon name={item.icon} />
+                    <span>{item.label}</span>
                   </NavLink>
                 </li>
               ))}
