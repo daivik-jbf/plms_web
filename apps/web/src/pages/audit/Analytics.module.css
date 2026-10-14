@@ -1,0 +1,264 @@
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.header h1 {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 500;
+}
+
+.periodRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.periodRow select {
+  min-width: 12rem;
+}
+
+.range {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-6);
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+
+.tileValue {
+  display: block;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileLabel {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* A tile that needs attention says so in words as well as colour. */
+.tileAlert {
+  border-color: var(--color-danger);
+  background: var(--color-danger-surface);
+}
+
+.tileAlert .tileValue {
+  color: var(--color-danger);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.panel {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  break-inside: avoid;
+}
+
+.panel h2 {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-base);
+}
+
+.panelNote {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.gridLine {
+  stroke: var(--color-border);
+}
+
+.axis {
+  stroke: var(--color-border-strong);
+}
+
+.tick {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.bar {
+  fill: var(--color-primary);
+}
+
+.hit {
+  fill: transparent;
+}
+
+.hit:hover {
+  fill: var(--color-info-surface);
+}
+
+.ranked {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rankedRow {
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) 1fr 3.5rem;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.rankedLabel {
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+}
+
+.rankedValue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+}
+
+.track {
+  display: block;
+  height: 10px;
+  border-radius: 4px;
+  background: var(--color-surface);
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--color-primary);
+}
+
+.details {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.details summary {
+  min-height: 24px;
+  cursor: pointer;
+  color: var(--color-primary);
+}
+
+.dataTable {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.dataTable th,
+.dataTable td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.dataTable td:last-child,
+.dataTable th:last-child {
+  text-align: right;
+}
+
+.scroll {
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.people {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.people th,
+.people td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.people .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.ok {
+  color: var(--color-success);
+  font-weight: 500;
+}
+
+.alertLine {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+@media (max-width: 760px) {
+  .rankedRow {
+    grid-template-columns: 1fr 3.5rem;
+  }
+
+  .track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

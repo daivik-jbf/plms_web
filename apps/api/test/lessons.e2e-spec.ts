@@ -40,7 +40,7 @@ describe('lessons', () => {
     it('adds a lesson at the end, trimmed, and answers the whole tree', async () => {
       const { owner, course } = await setup();
       const first = await http().post(`/api/courses/${course.id}/lessons`).set(...bearer(owner.session)).send({ title: '  Exits  ' }).expect(201);
-      expect(first.body.lessons).toEqual([{ id: expect.any(String), title: 'Exits', position: 0, coverUrl: null, topics: [] }]);
+      expect(first.body.lessons).toEqual([{ id: expect.any(String), title: 'Exits', description: null, position: 0, coverUrl: null, topics: [] }]);
       const second = await addLessonViaApi(app, owner.session, course.id, 'Alarms');
       expect(second.lessons.map((lesson) => [lesson.title, lesson.position])).toEqual([
         ['Exits', 0],
@@ -53,6 +53,15 @@ describe('lessons', () => {
         targetLabel: 'Alarms',
         metadata: { courseId: course.id, courseTitle: course.title },
       });
+    });
+
+    it('keeps a trimmed description, and treats an empty one as none', async () => {
+      const { owner, course } = await setup();
+      const add = (body: object) => http().post(`/api/courses/${course.id}/lessons`).set(...bearer(owner.session)).send(body).expect(201);
+      expect((await add({ title: 'With', description: '  What it covers  ' })).body.lessons[0].description).toBe('What it covers');
+      expect((await add({ title: 'Blank', description: '   ' })).body.lessons[1].description).toBeNull();
+      const tooLong = await http().post(`/api/courses/${course.id}/lessons`).set(...bearer(owner.session)).send({ title: 'x', description: 'D'.repeat(2001) }).expect(400);
+      expect(tooLong.body.fieldErrors).toHaveProperty('description');
     });
 
     it('takes the course row first, so additions that wait for each other still get different positions', async () => {
@@ -111,6 +120,17 @@ describe('lessons', () => {
       expect(entry).toMatchObject({ targetLabel: 'Exits', changes: { title: { before: 'Exist', after: 'Exits' } }, metadata: { courseId: course.id } });
       await http().patch(`/api/lessons/${id}`).set(...bearer(owner.session)).send({ title: 'Exits' }).expect(200);
       expect(await auditFor('content.lesson.renamed', id)).toHaveLength(1);
+    });
+
+    it('edits the description and records it as an edit, not a rename', async () => {
+      const { owner, course } = await setup();
+      const tree = await addLessonViaApi(app, owner.session, course.id, 'Exits');
+      const id = tree.lessons[0].id;
+      const res = await http().patch(`/api/lessons/${id}`).set(...bearer(owner.session)).send({ description: ' All the exits ' }).expect(200);
+      expect(res.body.lessons[0]).toMatchObject({ id, title: 'Exits', description: 'All the exits' });
+      const [entry] = await auditFor('content.lesson.edited', id);
+      expect(entry).toMatchObject({ targetLabel: 'Exits', changes: { description: { before: null, after: 'All the exits' } } });
+      expect(await auditFor('content.lesson.renamed', id)).toHaveLength(0);
     });
 
     it.each([

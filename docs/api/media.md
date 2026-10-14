@@ -27,6 +27,7 @@ This is the hand-written contract for the media endpoints, written from the code
 | `GET /api/media/folders/:id/items` | List the items in a folder | 200 JSON |
 | `PUT /api/media/folders/:id/items/order` | Set the order of the ready items in a folder | 200 JSON |
 | `PATCH /api/media/items/:id` | Edit an item's title or description | 200 JSON |
+| `DELETE /api/media/items/:id` | Delete a finished item for good (Admin only) | 204, no body |
 | `POST /api/media/uploads` | Start an upload | 201 JSON |
 | `GET /api/media/uploads/mine` | The caller's unfinished uploads | 200 JSON |
 | `GET /api/media/uploads/:fileId` | State of an upload (for resuming) | 200 JSON |
@@ -135,6 +136,14 @@ Returns an array of `ItemView` in order (by `position`): the ready items and any
 Body: `title` (1 to 200 characters, trimmed) and/or `description` (at most 2,000, trimmed; an empty string or `null` clears it). At least one must be present (`Nothing to change.`). Returns the `ItemView`. A request that changes nothing is accepted and not audited. Any signed-in person may edit any **visible** item (a ready one, or your own unfinished upload).
 
 - 404 `Item not found.` (also for someone else's unfinished upload)
+
+### `DELETE /api/media/items/:id`
+
+Admins only. Deletes a **ready** item for good: its row, its media file and its cover are removed from the database, then from storage. There is no Trash for library items, so it cannot be undone. Returns 204 with no body.
+
+- 403 for Staff; 404 `Item not found.`
+- 409 `This is still uploading. Cancel the upload instead.` (use `DELETE /api/media/uploads/:fileId` for an unfinished upload)
+- 409 `This is used in a course topic. Remove it from the course first.` (or `...used in <n> course topics...`) while any course attachment still follows the item. An attachment in the Trash counts until it is deleted for good.
 
 ### `PUT /api/media/folders/:id/items/order`
 
@@ -366,6 +375,7 @@ Each entry is written in the same database transaction as the change it describe
 | `content.video.edited` | `PATCH /items/:id` (only when something changed; before and after in `changes`) |
 | `content.video.reordered` | `PUT /folders/:id/items/order` (only when the order changed) |
 | `content.video.cover_set` | `POST /items/:id/cover/:fileId/complete`, when the cover is attached |
+| `content.video.deleted` | `DELETE /items/:id`, on success (`metadata`: `category`, `folderId`, `folderName`) |
 | `playback.played` | `POST /items/:id/play`, once for every link issued |
 
 Content entries (`content.folder.*`, `content.video.*`) record `metadata.category` (`video`, `movie`, `podcast`, `song`). Entries about an item use the category as `target.type`. `file.upload_failed` reasons: `size_mismatch`, `not_mp4`, `not_audio`, `bad_image`, `expired`. The action names keep the word `video` for compatibility; they cover every category.

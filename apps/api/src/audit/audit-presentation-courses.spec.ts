@@ -60,6 +60,7 @@ describe('lesson and topic audit presentation', () => {
       "Anita Rao renamed the lesson from 'Exist' to 'Exits'",
     ],
     ['content.lesson.renamed', { targetLabel: 'Exits' }, 'Lesson renamed', 'change', "Anita Rao renamed the lesson 'Exits'"],
+    ['content.lesson.edited', { targetLabel: 'Exits' }, 'Lesson edited', 'change', "Anita Rao edited the lesson 'Exits'"],
     ['content.lesson.reordered', { targetLabel: 'Fire safety' }, 'Lessons reordered', 'neutral', "Anita Rao changed the order of the lessons in the course 'Fire safety'"],
     [
       'content.topic.added',
@@ -84,7 +85,7 @@ describe('lesson and topic audit presentation', () => {
 
   it('files the lesson and topic actions under content', () => {
     const structure = AUDIT_ACTIONS.filter((action) => /^content\.(lesson|topic)\./.test(action));
-    expect(structure).toHaveLength(14);
+    expect(structure).toHaveLength(15);
     expect(structure.every((action) => categoryOf(action) === 'content')).toBe(true);
   });
 });

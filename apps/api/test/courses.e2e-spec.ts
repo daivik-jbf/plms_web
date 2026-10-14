@@ -136,11 +136,11 @@ describe('courses', () => {
             position: 0,
             coverUrl: null,
             topics: [
-              { id: t1.id, title: 'Topic A', position: 0, coverUrl: null, attachmentCount: 0 },
-              { id: t2.id, title: 'Topic B', position: 1, coverUrl: null, attachmentCount: 0 },
+              { id: t1.id, title: 'Topic A', position: 0, coverUrl: null, attachmentCount: 0, attachments: [] },
+              { id: t2.id, title: 'Topic B', position: 1, coverUrl: null, attachmentCount: 0, attachments: [] },
             ],
           },
-          { id: second.id, title: 'Second lesson', position: 1, coverUrl: null, topics: [] },
+          { id: second.id, title: 'Second lesson', description: null, position: 1, coverUrl: null, topics: [] },
         ],
       });
     });

@@ -145,3 +145,10 @@
   background: var(--color-surface);
   font-size: var(--text-sm);
 }
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}

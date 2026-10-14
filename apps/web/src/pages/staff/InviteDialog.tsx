@@ -3,7 +3,7 @@ import { ApiError, describeError } from '../../api/client';
 import { createInvite, type Role } from '../../api/staff';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { Dialog } from '../../components/Dialog';
+import { GuardedDialog, useDialogGuard } from '../../components/GuardedDialog';
 import { Select } from '../../components/Select';
 import { TextField } from '../../components/TextField';
 import styles from './StaffPage.module.css';
@@ -18,18 +18,17 @@ interface InviteDialogProps {
 export function InviteDialog({ open, onClose, onInvited }: InviteDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={open} onClose={onClose} title="Invite person" blocked={busy}>
-      <InviteForm onClose={onClose} onInvited={onInvited} busy={busy} setBusy={setBusy} />
-    </Dialog>
+    <GuardedDialog discard="Discard this invite? Nothing has been sent yet." open={open} onClose={onClose} title="Invite person" blocked={busy}>
+      <InviteForm onInvited={onInvited} busy={busy} setBusy={setBusy} />
+    </GuardedDialog>
   );
 }
 
 function InviteForm({
-  onClose,
   onInvited,
   busy,
   setBusy,
-}: Pick<InviteDialogProps, 'onClose' | 'onInvited'> & { busy: boolean; setBusy: (busy: boolean) => void }) {
+}: Pick<InviteDialogProps, 'onInvited'> & { busy: boolean; setBusy: (busy: boolean) => void }) {
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const roleRef = useRef<HTMLSelectElement>(null);
@@ -40,6 +39,8 @@ function InviteForm({
   const [failure, setFailure] = useState<string | null>(null);
   // A new object every time, so the effect runs again even when the same field is invalid twice in a row.
   const [focusRequest, setFocusRequest] = useState<{ field: 'name' | 'email' | 'role' } | null>(null);
+  // Something typed, or a role other than the first one offered: closing the dialog asks first.
+  const requestClose = useDialogGuard(name.trim() !== '' || email.trim() !== '' || role !== 'staff');
 
   // Focus moves only after the error text has rendered so it is announced together with the field.
   useEffect(() => {
@@ -102,7 +103,7 @@ function InviteForm({
         <option value="admin">Admin</option>
       </Select>
       <div className={styles.dialogActions}>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" onClick={requestClose} disabled={busy}>
           Cancel
         </Button>
         <Button type="submit" busy={busy}>

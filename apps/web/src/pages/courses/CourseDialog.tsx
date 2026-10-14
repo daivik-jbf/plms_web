@@ -3,7 +3,8 @@ import { ApiError, describeError } from '../../api/client';
 import { type CourseSummary, createCourse, updateCourse } from '../../api/courses';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { Dialog } from '../../components/Dialog';
+import { changesOf, ChangesDialog, textChange } from '../../components/ChangesDialog';
+import { GuardedDialog, useDialogGuard } from '../../components/GuardedDialog';
 import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import media from '../media/Media.module.css';
@@ -19,9 +20,15 @@ interface CourseDialogProps {
 export function CourseDialog({ mode, onClose, onSaved }: CourseDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={mode !== null} onClose={onClose} title={mode?.kind === 'rename' ? 'Rename course' : 'New course'} blocked={busy}>
-      {mode ? <CourseForm mode={mode} busy={busy} setBusy={setBusy} onClose={onClose} onSaved={onSaved} /> : null}
-    </Dialog>
+    <GuardedDialog
+      discard={mode?.kind === 'rename' ? 'Discard your changes?' : 'Discard the course you started?'}
+      open={mode !== null}
+      onClose={onClose}
+      title={mode?.kind === 'rename' ? 'Rename course' : 'New course'}
+      blocked={busy}
+    >
+      {mode ? <CourseForm mode={mode} busy={busy} setBusy={setBusy} onSaved={onSaved} /> : null}
+    </GuardedDialog>
   );
 }
 
@@ -31,9 +38,8 @@ function CourseForm({
   mode,
   busy,
   setBusy,
-  onClose,
   onSaved,
-}: Pick<CourseDialogProps, 'onClose' | 'onSaved'> & { mode: CourseDialogMode; busy: boolean; setBusy: (busy: boolean) => void }) {
+}: Pick<CourseDialogProps, 'onSaved'> & { mode: CourseDialogMode; busy: boolean; setBusy: (busy: boolean) => void }) {
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [title, setTitle] = useState(mode.kind === 'rename' ? mode.course.title : '');
@@ -42,6 +48,12 @@ function CourseForm({
   const [failure, setFailure] = useState<string | null>(null);
   // A new object every time, so focus returns to the field even when the same error repeats.
   const [focusRequest, setFocusRequest] = useState<{ field: Field } | null>(null);
+  const renaming = mode.kind === 'rename';
+  const [reviewing, setReviewing] = useState(false);
+  // A new course asks before it is thrown away; a rename can only be saved once the title is different, and shows the change first.
+  const review = mode.kind === 'rename' ? changesOf(textChange('Title', mode.course.title, title)) : [];
+  const dirty = renaming ? review.length > 0 : title.trim() !== '' || description.trim() !== '';
+  const requestClose = useDialogGuard(dirty);
 
   useEffect(() => {
     if (focusRequest) (focusRequest.field === 'title' ? titleRef : descriptionRef).current?.focus();
@@ -57,6 +69,17 @@ function CourseForm({
       return;
     }
     setErrors({});
+    if (mode.kind === 'rename') {
+      if (!dirty) return;
+      setReviewing(true);
+      return;
+    }
+    await save(trimmed);
+  }
+
+  // Runs at once for a new course, and after the person has confirmed the change for a rename.
+  async function save(trimmed: string) {
+    setReviewing(false);
     setBusy(true);
     try {
       if (mode.kind === 'rename') await updateCourse(mode.course.id, { title: trimmed });
@@ -82,13 +105,14 @@ function CourseForm({
         <TextArea ref={descriptionRef} label="Description" maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} error={errors.description} />
       ) : null}
       <div className={media.dialogActions}>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" onClick={requestClose} disabled={busy}>
           Cancel
         </Button>
-        <Button type="submit" busy={busy}>
+        <Button type="submit" busy={busy} disabled={renaming && !dirty}>
           {mode.kind === 'rename' ? 'Save' : 'Create course'}
         </Button>
       </div>
+      <ChangesDialog open={reviewing} changes={review} onBack={() => setReviewing(false)} onConfirm={() => void save(title.trim())} />
     </form>
   );
 }

@@ -21,11 +21,21 @@ export interface TopicSummary {
   coverUrl?: string | null;
   // Ready attachments only.
   attachmentCount: number;
+  // The same files, in order, for the tree to list under the topic; missing when there are none.
+  attachments?: AttachmentSummary[];
+}
+
+export interface AttachmentSummary {
+  id: string;
+  kind: AttachmentKind;
+  title: string;
 }
 
 export interface LessonNode {
   id: string;
   title: string;
+  // The text about the lesson; missing or null when there is none.
+  description?: string | null;
   position: number;
   coverUrl?: string | null;
   topics: TopicSummary[];
@@ -108,10 +118,30 @@ export const getTopic = (id: string): Promise<TopicDetail> => api<TopicDetail>(`
 export const uploadCourseCover = (id: string, file: File): Promise<CourseTree> => uploadCoverTo<CourseTree>(`/api/courses/${id}`, file);
 
 
-export const addLesson = (courseId: string, title: string): Promise<CourseTree> =>
-  api<CourseTree>(`/api/courses/${courseId}/lessons`, { method: 'POST', body: { title } });
+export const addLesson = (courseId: string, title: string, description?: string): Promise<CourseTree> =>
+  api<CourseTree>(`/api/courses/${courseId}/lessons`, { method: 'POST', body: description ? { title, description } : { title } });
 
-export const renameLesson = (id: string, title: string): Promise<CourseTree> => api<CourseTree>(`/api/lessons/${id}`, { method: 'PATCH', body: { title } });
+// A new lesson with its cover picture. The lesson is made first, so a cover that fails to upload leaves the lesson in place: the
+// answer is the tree as it now is, and the reason the cover is missing (null when all went well).
+export async function addLessonWithCover(
+  tree: CourseTree,
+  title: string,
+  description: string,
+  cover: File | null,
+): Promise<{ tree: CourseTree; coverFailure: unknown }> {
+  const known = new Set(tree.lessons.map((lesson) => lesson.id));
+  const added = await addLesson(tree.id, title, description);
+  const created = added.lessons.find((lesson) => !known.has(lesson.id));
+  if (!cover || !created) return { tree: added, coverFailure: null };
+  try {
+    return { tree: await uploadLessonCover(created.id, cover), coverFailure: null };
+  } catch (coverFailure) {
+    return { tree: added, coverFailure };
+  }
+}
+
+export const updateLesson = (id: string, input: { title?: string; description?: string }): Promise<CourseTree> =>
+  api<CourseTree>(`/api/lessons/${id}`, { method: 'PATCH', body: input });
 
 export const reorderLessons = (courseId: string, ids: string[]): Promise<CourseTree> =>
   api<CourseTree>(`/api/courses/${courseId}/lessons/order`, { method: 'PUT', body: { ids } });
@@ -119,7 +149,29 @@ export const reorderLessons = (courseId: string, ids: string[]): Promise<CourseT
 export const addTopic = (lessonId: string, title: string, description?: string): Promise<CourseTree> =>
   api<CourseTree>(`/api/lessons/${lessonId}/topics`, { method: 'POST', body: description ? { title, description } : { title } });
 
-export const reorderTopics = (lessonId: string, ids: string[]): Promise<CourseTree> =>
+// A new topic with its cover picture. The topic is made first, so a cover that fails to upload leaves the topic in place: the
+// answer is the tree as it now is, and the reason the cover is missing (null when all went well).
+export async function addTopicWithCover(
+  tree: CourseTree,
+  lessonId: string,
+  title: string,
+  description: string,
+  cover: File | null,
+): Promise<{ tree: CourseTree; coverFailure: unknown }> {
+  const known = new Set(tree.lessons.find((lesson) => lesson.id === lessonId)?.topics.map((topic) => topic.id));
+  const added = await addTopic(lessonId, title, description);
+  const created = added.lessons.find((lesson) => lesson.id === lessonId)?.topics.find((topic) => !known.has(topic.id));
+  if (!cover || !created) return { tree: added, coverFailure: null };
+  try {
+    await uploadTopicCover(created.id, cover);
+  } catch (coverFailure) {
+    return { tree: added, coverFailure };
+  }
+  // The covers are links to the stored pictures, so the tree is read again to show the new one.
+  return { tree: await getCourse(tree.id), coverFailure: null };
+}
+
+export const reorderTopics =(lessonId: string, ids: string[]): Promise<CourseTree> =>
   api<CourseTree>(`/api/lessons/${lessonId}/topics/order`, { method: 'PUT', body: { ids } });
 
 export const updateTopic = (id: string, input: { title?: string; description?: string }): Promise<TopicView> =>

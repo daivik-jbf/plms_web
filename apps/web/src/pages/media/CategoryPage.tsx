@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { describeError } from '../../api/client';
-import { type Folder, listFolders, reorderFolders } from '../../api/media';
+import { deleteFolder, type Folder, listFolders } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Icon } from '../../components/Icon';
-import { MoveButton } from '../../components/MoveButton';
 import { Skeleton } from '../../components/Skeleton';
-import { useMoveFocus } from '../../components/use-move-focus';
-import { plural } from '../../lib/format';
+import { formatBytes, formatDateTime, plural } from '../../lib/format';
 import type { CategoryConfig } from '../../media/categories';
 import hub from '../courses/CoursesHub.module.css';
 import { FolderDialog, type FolderDialogMode } from './FolderDialog';
@@ -25,7 +24,8 @@ export function CategoryPage({ category }: { category: CategoryConfig }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [query, setQuery] = useState('');
-  const moveFocus = useMoveFocus(busy);
+  const [removing, setRemoving] = useState<Folder | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -40,18 +40,17 @@ export function CategoryPage({ category }: { category: CategoryConfig }) {
     void load();
   }, [load]);
 
-  async function move(index: number, delta: -1 | 1) {
-    if (!folders) return;
-    const ids = folders.map((folder) => folder.id);
-    const target = index + delta;
-    [ids[index], ids[target]] = [ids[target] as string, ids[index] as string];
+  async function confirmRemove() {
+    if (!removing) return;
     setBusy(true);
-    setNotice(null);
+    setRemoveError(null);
     try {
-      setFolders(await reorderFolders(category.slug, ids));
-    } catch (error) {
-      setNotice({ tone: 'error', text: describeError(error) });
+      await deleteFolder(removing.id);
+      setNotice({ tone: 'success', text: `Folder "${removing.name}" deleted.` });
+      setRemoving(null);
       await load();
+    } catch (error) {
+      setRemoveError(describeError(error));
     } finally {
       setBusy(false);
     }
@@ -112,39 +111,65 @@ export function CategoryPage({ category }: { category: CategoryConfig }) {
           {shown.length === 0 ? (
             <p>{`No folder matches "${query.trim()}".`}</p>
           ) : (
-            <ul className={styles.folderGrid} aria-label={`${category.nounTitle} folders`} {...moveFocus}>
-              {shown.map((folder) => {
-                const index = folders.indexOf(folder);
-                return (
-                  <li key={folder.id} className={styles.folderCard}>
-                    <Link className={styles.folderLink} to={`/${category.slug}/${folder.id}`} aria-label={`Open ${folder.name}`}>
-                      <span className={styles.folderTile} aria-hidden="true">
-                        <Icon name="folder" size={28} />
+            <ul className={styles.folderGrid} aria-label={`${category.nounTitle} folders`}>
+              {shown.map((folder) => (
+                <li key={folder.id} className={styles.folderCard}>
+                  <Link className={styles.folderLink} to={`/${category.slug}/${folder.id}`} aria-label={`Open ${folder.name}`}>
+                    <span className={styles.folderTile} aria-hidden="true">
+                      <Icon name="folder" size={28} />
+                    </span>
+                    <span className={styles.folderText}>
+                      <span className={styles.folderName}>{folder.name}</span>
+                      <span className={styles.folderMeta}>
+                        <span>{plural(folder.itemCount, category.noun)}</span>
+                        <span>{formatBytes(folder.sizeBytes)}</span>
                       </span>
-                      <span className={styles.folderText}>
-                        <span className={styles.folderName}>{folder.name}</span>
-                        <span className={styles.folderMeta}>{plural(folder.itemCount, category.noun)}</span>
-                      </span>
-                    </Link>
-                    <div className={styles.folderActions}>
-                      <Button variant="secondary" size="small" className={hub.square} disabled={busy} aria-label={`Rename ${folder.name}`} title="Rename" onClick={() => setDialog({ kind: 'rename', folder })}>
-                        <Icon name="edit" size={16} />
-                      </Button>
-                      <MoveButton className={hub.square} moveKey={`${folder.id}:up`} label={`Move ${folder.name} up`} unavailable={busy || index === 0} onMove={() => void move(index, -1)}>
-                        <Icon name="up" size={16} />
-                      </MoveButton>
-                      <MoveButton className={hub.square} moveKey={`${folder.id}:down`} label={`Move ${folder.name} down`} unavailable={busy || index === folders.length - 1} onMove={() => void move(index, 1)}>
-                        <Icon name="down" size={16} />
-                      </MoveButton>
+                    </span>
+                  </Link>
+                  <dl className={styles.folderDetails}>
+                    <div>
+                      <dt>Created</dt>
+                      <dd>{`${formatDateTime(folder.createdAt)} by ${folder.createdBy.name}`}</dd>
                     </div>
-                  </li>
-                );
-              })}
+                    <div>
+                      <dt>Updated</dt>
+                      <dd>{`${formatDateTime(folder.updatedAt)} by ${folder.updatedBy.name}`}</dd>
+                    </div>
+                  </dl>
+                  <div className={styles.folderActions}>
+                    <Button variant="secondary" size="small" className={hub.square} disabled={busy} aria-label={`Rename ${folder.name}`} title="Rename" onClick={() => setDialog({ kind: 'rename', folder })}>
+                      <Icon name="edit" size={16} />
+                    </Button>
+                    <Button variant="secondary" size="small" className={hub.square} disabled={busy} aria-label={`Delete ${folder.name}`} title="Delete" onClick={() => setRemoving(folder)}>
+                      <Icon name="trash" size={16} />
+                    </Button>
+                  </div>
+                </li>
+              ))}
             </ul>
           )}
         </>
       )}
 
+      <ConfirmDialog
+        open={removing !== null}
+        title="Delete folder"
+        confirmLabel="Delete for good"
+        tone="danger"
+        busy={busy}
+        error={removeError}
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => {
+          setRemoving(null);
+          setRemoveError(null);
+        }}
+      >
+        {removing
+          ? removing.itemCount > 0
+            ? `Delete the folder "${removing.name}" for good? Its ${plural(removing.itemCount, category.noun)}, with ${removing.itemCount === 1 ? 'its file and cover' : 'their files and covers'}, ${removing.itemCount === 1 ? 'is' : 'are'} removed too, and this cannot be undone.`
+            : `Delete the folder "${removing.name}" for good? This cannot be undone.`
+          : ''}
+      </ConfirmDialog>
       <FolderDialog slug={category.slug} mode={dialog} onClose={() => setDialog(null)} onSaved={onSaved} />
     </>
   );

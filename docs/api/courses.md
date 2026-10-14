@@ -18,9 +18,9 @@ This is the hand-written contract for the course endpoints, written from the cod
 | `PATCH /api/courses/:id` | Edit the title and the description | 200 `CourseTree` |
 | `POST /api/courses/:id/cover` | Start setting the cover (the library's cover flow) | 201 `{ fileId, url, headers }` |
 | `POST /api/courses/:id/cover/:fileId/complete` | Check and attach the cover | 200 `CourseTree` |
-| `POST /api/courses/:id/lessons` | Add a lesson (at the end) | 201 `CourseTree` |
+| `POST /api/courses/:id/lessons` | Add a lesson (at the end), with an optional description | 201 `CourseTree` |
 | `PUT /api/courses/:id/lessons/order` | Reorder the lessons of the course | 200 `CourseTree` |
-| `PATCH /api/lessons/:id` | Rename a lesson | 200 `CourseTree` |
+| `PATCH /api/lessons/:id` | Rename a lesson or change its description | 200 `CourseTree` |
 | `POST /api/lessons/:id/topics` | Add a topic (at the end) | 201 `CourseTree` |
 | `PUT /api/lessons/:id/topics/order` | Reorder the topics of the lesson | 200 `CourseTree` |
 | `PATCH /api/topics/:id` | Edit a topic's title and text | 200 `TopicView` |
@@ -36,7 +36,7 @@ Ids in the path must be UUIDs (400 otherwise); an id that does not exist is 404 
 ## Objects
 
 - `CourseView`: `id`, `title`, `description` (string or `null`), `position`, `coverUrl` (a one-hour link or `null`), `lessonCount`, `topicCount`, `createdBy` (`{ id, name }`), `createdAt`.
-- `CourseTree`: the same without the counts, plus `lessons`: `[{ id, title, position, topics: [{ id, title, position, attachmentCount }] }]`. `attachmentCount` counts ready attachments only.
+- `CourseTree`: the same without the counts, plus `lessons`: `[{ id, title, description, position, topics: [{ id, title, position, attachmentCount }] }]`. `attachmentCount` counts ready attachments only.
 - `TopicView`: `id`, `lessonId`, `courseId`, `title`, `description` (string or `null`), `position`. `TopicDetail` adds `attachments: AttachmentView[]`.
 - `AttachmentView`: `id`, `topicId`, `position`, `kind` (`video`, `audio`, `pdf`, `image`), `title`, `source` (`upload` or `library`), `status` (`uploading` or `ready`), `sizeBytes`, `durationSeconds` (or `null`), `thumbnailUrl` (a one-hour link to the library item's cover, or to the uploaded image itself; `null` for everything else), `libraryItemId`, `category` (`video`, `movie`, `podcast`, `song`) and `libraryFolderName` (all three `null` for an uploaded file), `createdBy`, `createdAt`. It never contains a storage key or a file id.
 
@@ -95,6 +95,7 @@ Each entry is written in the same transaction as the change it describes. None c
 | `content.course.cover_set` | the cover completion | the course | `fileId` |
 | `content.lesson.added` | `POST /courses/:id/lessons` | the lesson | `courseId`, `courseTitle` |
 | `content.lesson.renamed` | `PATCH /lessons/:id` | the lesson | `courseId`; before and after in `changes` |
+| `content.lesson.edited` | `PATCH /lessons/:id` (description changed) | the lesson | `courseId`; before and after in `changes` |
 | `content.lesson.reordered` | `PUT /courses/:id/lessons/order` | the course | |
 | `content.topic.added` | `POST /lessons/:id/topics` | the topic | `lessonId`, `lessonTitle`, `courseId` |
 | `content.topic.edited` | `PATCH /topics/:id` | the topic | before and after in `changes` |

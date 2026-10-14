@@ -1,0 +1,77 @@
+.root {
+  margin-bottom: var(--space-4);
+}
+
+/* The file field keeps its own spacing; the editor sits right under it. */
+.root > div:first-child {
+  margin-bottom: var(--space-3);
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.aspects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.on {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: #dbe5f0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.frame:active {
+  cursor: grabbing;
+}
+
+.frame:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
+}
+
+.picture {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  font-weight: 500;
+}
+
+.zoom input {
+  flex: 1;
+  min-width: 0;
+}
+
+.zoom span:last-child {
+  min-width: 3.5ch;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  text-align: right;
+}

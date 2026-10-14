@@ -61,3 +61,12 @@ input[type='radio'] {
 body:has(dialog:modal) {
   overflow: hidden;
 }
+
+/* The analytics report prints on its own: no sidebar, top bar or controls. */
+@media print {
+  body:has([data-print-report]) aside,
+  body:has([data-print-report]) header,
+  body:has([data-print-report]) [data-no-print] {
+    display: none !important;
+  }
+}

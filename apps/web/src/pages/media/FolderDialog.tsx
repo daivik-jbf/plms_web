@@ -3,7 +3,8 @@ import { ApiError, describeError } from '../../api/client';
 import { type CategorySlug, createFolder, type Folder, renameFolder } from '../../api/media';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { Dialog } from '../../components/Dialog';
+import { changesOf, ChangesDialog, textChange } from '../../components/ChangesDialog';
+import { GuardedDialog, useDialogGuard } from '../../components/GuardedDialog';
 import { TextField } from '../../components/TextField';
 import styles from './Media.module.css';
 
@@ -19,9 +20,15 @@ interface FolderDialogProps {
 export function FolderDialog({ slug, mode, onClose, onSaved }: FolderDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={mode !== null} onClose={onClose} title={mode?.kind === 'rename' ? 'Rename folder' : 'New folder'} blocked={busy}>
-      {mode ? <FolderForm slug={slug} mode={mode} busy={busy} setBusy={setBusy} onClose={onClose} onSaved={onSaved} /> : null}
-    </Dialog>
+    <GuardedDialog
+      discard={mode?.kind === 'rename' ? 'Discard your changes?' : 'Discard the new folder?'}
+      open={mode !== null}
+      onClose={onClose}
+      title={mode?.kind === 'rename' ? 'Rename folder' : 'New folder'}
+      blocked={busy}
+    >
+      {mode ? <FolderForm slug={slug} mode={mode} busy={busy} setBusy={setBusy} onSaved={onSaved} /> : null}
+    </GuardedDialog>
   );
 }
 
@@ -30,15 +37,20 @@ function FolderForm({
   mode,
   busy,
   setBusy,
-  onClose,
   onSaved,
-}: Pick<FolderDialogProps, 'slug' | 'onClose' | 'onSaved'> & { mode: FolderDialogMode; busy: boolean; setBusy: (busy: boolean) => void }) {
+}: Pick<FolderDialogProps, 'slug' | 'onSaved'> & { mode: FolderDialogMode; busy: boolean; setBusy: (busy: boolean) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(mode.kind === 'rename' ? mode.folder.name : '');
   const [error, setError] = useState<string | undefined>();
   const [failure, setFailure] = useState<string | null>(null);
   // A new object every time, so focus returns to the field even when the same error repeats.
   const [focusRequest, setFocusRequest] = useState<object | null>(null);
+  const renaming = mode.kind === 'rename';
+  const [reviewing, setReviewing] = useState(false);
+  // A new folder asks before it is thrown away; a rename can only be saved once the name is different, and shows the change first.
+  const review = mode.kind === 'rename' ? changesOf(textChange('Folder name', mode.folder.name, name)) : [];
+  const dirty = renaming ? review.length > 0 : name.trim() !== '';
+  const requestClose = useDialogGuard(dirty);
 
   useEffect(() => {
     if (focusRequest) inputRef.current?.focus();
@@ -54,6 +66,17 @@ function FolderForm({
       return;
     }
     setError(undefined);
+    if (mode.kind === 'rename') {
+      if (!dirty) return;
+      setReviewing(true);
+      return;
+    }
+    await save(trimmed);
+  }
+
+  // Runs at once for a new folder, and after the person has confirmed the change for a rename.
+  async function save(trimmed: string) {
+    setReviewing(false);
     setBusy(true);
     try {
       const saved = mode.kind === 'rename' ? await renameFolder(mode.folder.id, trimmed) : await createFolder(slug, trimmed);
@@ -84,13 +107,14 @@ function FolderForm({
         error={error}
       />
       <div className={styles.dialogActions}>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" onClick={requestClose} disabled={busy}>
           Cancel
         </Button>
-        <Button type="submit" busy={busy}>
+        <Button type="submit" busy={busy} disabled={renaming && !dirty}>
           {mode.kind === 'rename' ? 'Save' : 'Create folder'}
         </Button>
       </div>
+      <ChangesDialog open={reviewing} changes={review} onBack={() => setReviewing(false)} onConfirm={() => void save(name.trim())} />
     </form>
   );
 }

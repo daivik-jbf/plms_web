@@ -154,6 +154,8 @@ export const mediaFolders = pgTable(
       .references(() => users.id),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+    // Null until the folder is first changed; the folder's creator counts as the last person to touch it until then.
+    updatedBy: uuid('updated_by').references(() => users.id),
   },
   (table) => [uniqueIndex('media_folders_name_unique').on(table.category, sql`lower(${table.name})`)],
 );
@@ -191,6 +193,14 @@ export const courses = pgTable('courses', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   description: text('description'),
+  // The details shown on the Course details tab; all optional.
+  shortDescription: text('short_description'),
+  category: text('category'),
+  level: text('level'),
+  language: text('language'),
+  instructorId: uuid('instructor_id').references(() => users.id),
+  prerequisites: text('prerequisites'),
+  learningOutcomes: jsonb('learning_outcomes').$type<string[]>().notNull().default([]),
   position: integer('position').notNull(),
   coverFileId: uuid('cover_file_id').references(() => files.id),
   createdBy: uuid('created_by')
@@ -211,6 +221,7 @@ export const lessons = pgTable(
       .notNull()
       .references(() => courses.id),
     title: text('title').notNull(),
+    description: text('description'),
     position: integer('position').notNull(),
     coverFileId: uuid('cover_file_id').references(() => files.id),
     createdBy: uuid('created_by')

@@ -1,11 +1,11 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
 import type { Database } from '../src/db/db.module';
 import { auditLog } from '../src/db/schema';
 import { bearer } from './helpers/auth';
 import { createTestApp } from './helpers/app';
-import { createFolderViaApi, signIn, uniqueName } from './helpers/media';
+import { createFolderViaApi, seedFolder, seedItem, signIn, uniqueName } from './helpers/media';
 
 describe('media folders', () => {
   let app: NestExpressApplication;
@@ -35,7 +35,7 @@ describe('media folders', () => {
     const first = await createFolderViaApi(app, session);
     const second = await createFolderViaApi(app, session);
     expect(second.position).toBeGreaterThan(first.position);
-    expect(first).toEqual({ id: expect.any(String), name: expect.any(String), position: expect.any(Number), itemCount: 0, category: 'video' });
+    expect(first).toMatchObject({ id: expect.any(String), name: expect.any(String), position: expect.any(Number), itemCount: 0, sizeBytes: 0, category: 'video' });
     const list = (await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body;
     const ids = list.map((folder: { id: string }) => folder.id);
     expect(ids.indexOf(first.id)).toBeLessThan(ids.indexOf(second.id));
@@ -92,48 +92,36 @@ describe('media folders', () => {
     await http().patch(`/api/media/folders/${a.id}`).set(...bearer(session)).send({ name: b.name.toLowerCase() }).expect(409);
   });
 
+  it('shows who made a folder and who last changed it, with the dates', async () => {
+    const creator = await signIn(app, db);
+    const editor = await signIn(app, db, 'admin');
+    const created = await createFolderViaApi(app, creator.session);
+    expect(created).toMatchObject({ createdBy: { id: creator.user.id, name: creator.user.name }, updatedBy: { id: creator.user.id, name: creator.user.name } });
+    expect(created.updatedAt).toBe(created.createdAt);
+
+    const renamed = await http().patch(`/api/media/folders/${created.id}`).set(...bearer(editor.session)).send({ name: uniqueName('Renamed') }).expect(200);
+    expect(renamed.body.createdBy).toEqual({ id: creator.user.id, name: creator.user.name });
+    expect(renamed.body.updatedBy).toEqual({ id: editor.user.id, name: editor.user.name });
+    expect(new Date(renamed.body.updatedAt).getTime()).toBeGreaterThan(new Date(renamed.body.createdAt).getTime());
+    expect(renamed.body.createdAt).toBe(created.createdAt);
+  });
+
+  it('adds up the size of the ready videos and covers, and leaves out an upload in progress', async () => {
+    const { user, session } = await signIn(app, db);
+    const folder = await seedFolder(db, user.id);
+    await seedItem(db, { folderId: folder.id, createdBy: user.id, sizeBytes: 1000 });
+    await seedItem(db, { folderId: folder.id, createdBy: user.id, sizeBytes: 500, withCover: true });
+    await seedItem(db, { folderId: folder.id, createdBy: user.id, sizeBytes: 9999, status: 'uploading' });
+    const list = (await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body as { id: string; itemCount: number; sizeBytes: number }[];
+    const found = list.find((candidate) => candidate.id === folder.id);
+    expect(found?.itemCount).toBe(2);
+    expect(found?.sizeBytes).toBe(1000 + 500 + 64); // the 64-byte cover is counted too
+  });
+
   it('answers 404 for an unknown folder and 400 for a malformed id', async () => {
     const { session } = await signIn(app, db);
     await http().patch('/api/media/folders/00000000-0000-4000-8000-000000000000').set(...bearer(session)).send({ name: 'x' }).expect(404);
     await http().patch('/api/media/folders/nope').set(...bearer(session)).send({ name: 'x' }).expect(400);
-  });
-
-  it('reorders when given exactly the current folders, and audits only a real change', async () => {
-    const { user, session } = await signIn(app, db);
-    await createFolderViaApi(app, session);
-    const current = (await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body as { id: string }[];
-    const reorderedEntries = () => db.select().from(auditLog).where(eq(auditLog.action, 'content.folder.reordered'));
-    const beforeReal = await reorderedEntries();
-    const reversed = current.map((folder) => folder.id).reverse();
-    const res = await http().put('/api/media/videos/folders/order').set(...bearer(session)).send({ ids: reversed }).expect(200);
-    expect(res.body.map((folder: { id: string }) => folder.id)).toEqual(reversed);
-    const after = (await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body as { id: string }[];
-    expect(after.map((folder) => folder.id)).toEqual(reversed);
-
-    const afterReal = await reorderedEntries();
-    expect(afterReal).toHaveLength(beforeReal.length + 1);
-    const known = new Set(beforeReal.map((entry) => entry.id));
-    const added = afterReal.filter((entry) => !known.has(entry.id));
-    expect(added).toHaveLength(1);
-    expect(added[0]).toMatchObject({ actorId: user.id, targetType: 'category', targetId: 'video' });
-
-    await http().put('/api/media/videos/folders/order').set(...bearer(session)).send({ ids: reversed }).expect(200);
-    expect(await reorderedEntries()).toHaveLength(afterReal.length);
-  });
-
-  it('refuses an order that is missing, adds, repeats or invents a folder', async () => {
-    const { session } = await signIn(app, db);
-    await createFolderViaApi(app, session);
-    await createFolderViaApi(app, session);
-    const ids = ((await http().get('/api/media/videos/folders').set(...bearer(session)).expect(200)).body as { id: string }[]).map((f) => f.id);
-    const put = (body: string | object) => http().put('/api/media/videos/folders/order').set(...bearer(session)).send(body);
-    await put({ ids: ids.slice(1) }).expect(409);
-    await put({ ids: [...ids, '00000000-0000-4000-8000-000000000000'] }).expect(409);
-    await put({ ids: [ids[0], ...ids] }).expect(409);
-    await put({ ids: ['00000000-0000-4000-8000-000000000000', ...ids.slice(1)] }).expect(409);
-    await put({ ids: ['not-a-uuid'] }).expect(400);
-    await put({ ids: 'x' }).expect(400);
-    await put({}).expect(400);
   });
 
   describe('categories', () => {
@@ -142,19 +130,27 @@ describe('media folders', () => {
       ['movies', 'movie'],
       ['podcasts', 'podcast'],
       ['songs', 'song'],
-    ] as const)('creates, lists, renames and reorders %s folders, each marked with its category', async (slug, category) => {
+    ] as const)('creates, lists and renames %s folders, each marked with its category', async (slug, category) => {
       const { session } = await signIn(app, db);
       const first = await createFolderViaApi(app, session, uniqueName(), slug);
       await createFolderViaApi(app, session, uniqueName(), slug);
-      expect(first).toEqual({ id: expect.any(String), name: expect.any(String), position: expect.any(Number), itemCount: 0, category });
+      expect(first).toEqual({
+        id: expect.any(String),
+        name: expect.any(String),
+        position: expect.any(Number),
+        itemCount: 0,
+        sizeBytes: 0,
+        category,
+        createdAt: expect.any(String),
+        createdBy: { id: expect.any(String), name: expect.any(String) },
+        updatedAt: expect.any(String),
+        updatedBy: { id: expect.any(String), name: expect.any(String) },
+      });
       const list = (await http().get(`/api/media/${slug}/folders`).set(...bearer(session)).expect(200)).body as { id: string; category: string }[];
       expect(list.map((folder) => folder.id)).toContain(first.id);
       expect(new Set(list.map((folder) => folder.category))).toEqual(new Set([category]));
       const renamed = await http().patch(`/api/media/folders/${first.id}`).set(...bearer(session)).send({ name: uniqueName('Renamed') }).expect(200);
       expect(renamed.body.category).toBe(category);
-      const reversed = list.map((folder) => folder.id).reverse();
-      const reordered = await http().put(`/api/media/${slug}/folders/order`).set(...bearer(session)).send({ ids: reversed }).expect(200);
-      expect(reordered.body.map((folder: { id: string }) => folder.id)).toEqual(reversed);
     });
 
     it("keeps each category's folders apart, and lets the same name exist in two categories", async () => {
@@ -176,28 +172,17 @@ describe('media folders', () => {
       for (const slug of ['music', 'video', 'Videos', 'SONGS', 'constructor', '__proto__', 'toString', 'folders']) {
         await http().get(`/api/media/${slug}/folders`).set(...bearer(session)).expect(404);
         await http().post(`/api/media/${slug}/folders`).set(...bearer(session)).send({ name: uniqueName() }).expect(404);
-        await http().put(`/api/media/${slug}/folders/order`).set(...bearer(session)).send({ ids: [] }).expect(404);
       }
       await http().get('/api/media/music/folders').expect(401);
     });
 
-    it('records the category of every folder change and names it in a reorder', async () => {
+    it('records the category of every folder change', async () => {
       const { user, session } = await signIn(app, db);
       const created = await createFolderViaApi(app, session, uniqueName(), 'podcasts');
       const [entry] = await auditFor('content.folder.created', created.id);
       expect(entry).toMatchObject({ actorId: user.id, targetType: 'folder', metadata: { category: 'podcast' } });
       await http().patch(`/api/media/folders/${created.id}`).set(...bearer(session)).send({ name: uniqueName('Renamed') }).expect(200);
       expect((await auditFor('content.folder.renamed', created.id))[0].metadata).toEqual({ category: 'podcast' });
-      await createFolderViaApi(app, session, uniqueName(), 'podcasts');
-      const ids = ((await http().get('/api/media/podcasts/folders').set(...bearer(session)).expect(200)).body as { id: string }[]).map((f) => f.id).reverse();
-      await http().put('/api/media/podcasts/folders/order').set(...bearer(session)).send({ ids }).expect(200);
-      const [reordered] = await db
-        .select()
-        .from(auditLog)
-        .where(and(eq(auditLog.action, 'content.folder.reordered'), eq(auditLog.targetId, 'podcast')))
-        .orderBy(desc(auditLog.occurredAt))
-        .limit(1);
-      expect(reordered).toMatchObject({ actorId: user.id, targetType: 'category', targetLabel: 'Podcast folders', metadata: { category: 'podcast' } });
     });
   });
 });

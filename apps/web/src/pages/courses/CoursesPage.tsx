@@ -187,8 +187,6 @@ export function CoursesPage() {
                 course={selected}
                 isAdmin={isAdmin}
                 busy={busy}
-                onRename={() => setDialog({ kind: 'rename', course: selected })}
-                onDelete={() => setRemoving(selected)}
                 onChanged={() => void load()}
               />
             ) : null}

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { AUDIT_ACTIONS } from './audit.actions';
+import { rangeError, resolveRange } from './audit-analytics';
 
 // Postgres has no year 0 (and JS dates go further than Postgres), so only years 0001-9999 are accepted. The value is
 // later bound as text with a ::timestamptz cast, which keeps its full (microsecond) precision.
-const instant = () =>
+export const instant = () =>
   z.iso
     .datetime({ offset: true })
     .refine((value) => value.slice(0, 4) !== '0000', { message: 'The year must be between 0001 and 9999.' });
@@ -37,3 +38,14 @@ export const auditQuerySchema = auditFilterSchema.extend({
 
 export type AuditFilters = z.infer<typeof auditFilterSchema>;
 export type AuditQuery = z.infer<typeof auditQuerySchema>;
+
+// The period for analytics and reports. Both ends are optional (the last 30 days by default), and it may span at most
+// 366 days so one request cannot scan the whole log.
+export const auditRangeSchema = z
+  .object({ from: instant().optional(), to: instant().optional() })
+  .superRefine((value, context) => {
+    const message = rangeError(resolveRange(value));
+    if (message) context.addIssue({ code: 'custom', message, path: ['from'] });
+  });
+
+export type AuditRange = z.infer<typeof auditRangeSchema>;

@@ -8,7 +8,12 @@ export interface Folder {
   name: string;
   position: number;
   itemCount: number;
+  sizeBytes: number;
   category: MediaCategory;
+  createdAt: string;
+  createdBy: { id: string; name: string };
+  updatedAt: string;
+  updatedBy: { id: string; name: string };
 }
 
 export interface MediaItem {
@@ -93,15 +98,18 @@ export const createFolder = (slug: CategorySlug, name: string): Promise<Folder> 
 export const renameFolder = (id: string, name: string): Promise<Folder> =>
   api<Folder>(`/api/media/folders/${id}`, { method: 'PATCH', body: { name } });
 
-export const reorderFolders = (slug: CategorySlug, ids: string[]): Promise<Folder[]> =>
-  api<Folder[]>(`/api/media/${slug}/folders/order`, { method: 'PUT', body: { ids } });
+// For good: the folder, every item in it and their files and covers. Refused while something in it is uploading or used by a course.
+export const deleteFolder = (id: string): Promise<void> => api<void>(`/api/media/folders/${id}`, { method: 'DELETE' });
 
 export const listItems = (folderId: string): Promise<MediaItem[]> => api<MediaItem[]>(`/api/media/folders/${folderId}/items`);
 
 export const updateItem = (id: string, input: { title?: string; description?: string }): Promise<MediaItem> =>
   api<MediaItem>(`/api/media/items/${id}`, { method: 'PATCH', body: input });
 
-export const reorderItems = (folderId: string, ids: string[]): Promise<MediaItem[]> =>
+// For good: the item, its file and its cover. Refused while a course topic still uses it.
+export const deleteItem = (id: string): Promise<void> => api<void>(`/api/media/items/${id}`, { method: 'DELETE' });
+
+export const reorderItems =(folderId: string, ids: string[]): Promise<MediaItem[]> =>
   api<MediaItem[]>(`/api/media/folders/${folderId}/items/order`, { method: 'PUT', body: { ids } });
 
 export const playItem = (id: string): Promise<PlayLink> => api<PlayLink>(`/api/media/items/${id}/play`, { method: 'POST' });

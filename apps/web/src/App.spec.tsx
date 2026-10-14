@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import { makeFolder } from './test/folders';
 import { mockSession, renderWithSession, STAFF } from './test/session';
 
 describe('App routes for the media categories', () => {
@@ -39,7 +40,7 @@ describe('App routes for the media categories', () => {
 
   it('opens a folder inside its category', async () => {
     mockSession(STAFF, (url) => {
-      if (url === '/api/media/songs/folders') return { body: [{ id: 'f9', name: 'Road trip', position: 0, itemCount: 0, category: 'song' }] };
+      if (url === '/api/media/songs/folders') return { body: [makeFolder({ id: 'f9', name: 'Road trip', category: 'song' })] };
       if (url === '/api/media/folders/f9/items') return { body: [] };
       if (url === '/api/media/uploads/mine') return { body: [] };
       return { status: 404, body: {} };

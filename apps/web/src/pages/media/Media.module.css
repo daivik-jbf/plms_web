@@ -213,8 +213,42 @@
 }
 
 .folderMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
+}
+
+.folderMeta > span + span::before {
+  content: '·';
+  margin-right: var(--space-2);
+}
+
+.folderDetails {
+  display: grid;
+  flex: 1 1 100%;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.folderDetails > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+}
+
+.folderDetails dt {
+  min-width: 4.5rem;
+  color: var(--color-text-muted);
+}
+
+.folderDetails dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .folderActions {

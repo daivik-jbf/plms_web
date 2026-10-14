@@ -10,6 +10,7 @@ import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AccountPage } from './pages/account/AccountPage';
+import { AnalyticsPage } from './pages/audit/AnalyticsPage';
 import { AuditPage } from './pages/audit/AuditPage';
 import { CoursePage } from './pages/courses/CoursePage';
 import { CoursesPage } from './pages/courses/CoursesPage';
@@ -45,6 +46,7 @@ export function App() {
           <Route element={<AdminRoute />}>
             <Route path="/staff" element={<StaffPage />} />
             <Route path="/audit" element={<AuditPage />} />
+            <Route path="/audit/analytics" element={<AnalyticsPage />} />
             <Route path="/trash" element={<TrashPage />} />
           </Route>
         </Route>

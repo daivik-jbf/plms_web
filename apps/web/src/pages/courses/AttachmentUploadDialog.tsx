@@ -2,7 +2,8 @@ import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'r
 import { ApiError, describeError } from '../../api/client';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { Dialog } from '../../components/Dialog';
+import { CoverField } from '../../components/CoverField';
+import { GuardedDialog, useDialogGuard } from '../../components/GuardedDialog';
 import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import { readDuration } from '../../uploads/duration';
@@ -21,9 +22,9 @@ interface AttachmentUploadDialogProps {
 export function AttachmentUploadDialog({ open, topicId, onClose, onStarted }: AttachmentUploadDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={open} onClose={onClose} title="Upload a file" blocked={busy}>
+    <GuardedDialog discard="Discard this upload? Nothing has been sent yet." open={open} onClose={onClose} title="Upload a file" blocked={busy}>
       <UploadForm topicId={topicId} busy={busy} setBusy={setBusy} onClose={onClose} onStarted={onStarted} />
-    </Dialog>
+    </GuardedDialog>
   );
 }
 
@@ -49,6 +50,8 @@ function UploadForm({
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ field: Field } | null>(null);
+  // Something typed or chosen: closing the dialog asks first.
+  const requestClose = useDialogGuard(file !== null || title.trim() !== '' || description.trim() !== '' || cover !== null);
   // The length of a video or audio file is read in the background while the person fills in the form; submitting waits for it.
   const duration = useRef<Promise<number | null>>(Promise.resolve(null));
 
@@ -140,17 +143,14 @@ function UploadForm({
         onChange={(e) => setDescription(e.target.value)}
         error={errors.description}
       />
-      <TextField
+      <CoverField
         ref={coverRef}
-        label="Cover image"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
         hint="Optional. A picture shown with the file. JPEG, PNG or WebP, up to 10 MB."
-        onChange={(e) => setCover(e.target.files?.[0] ?? null)}
+        onChange={setCover}
         error={errors.cover}
       />
       <div className={media.dialogActions}>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" onClick={requestClose} disabled={busy}>
           Cancel
         </Button>
         <Button type="submit" busy={busy}>

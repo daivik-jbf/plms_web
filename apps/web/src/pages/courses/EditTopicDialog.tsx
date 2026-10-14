@@ -3,7 +3,10 @@ import { ApiError, describeError } from '../../api/client';
 import { type TopicView, updateTopic, uploadTopicCover } from '../../api/courses';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { Dialog } from '../../components/Dialog';
+import { CurrentCover } from '../../components/CurrentCover';
+import { CoverField } from '../../components/CoverField';
+import { changesOf, ChangesDialog, coverChange, textChange } from '../../components/ChangesDialog';
+import { GuardedDialog, useDialogGuard } from '../../components/GuardedDialog';
 import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import { checkCoverFile } from '../../uploads/limits';
@@ -18,9 +21,9 @@ interface EditTopicDialogProps {
 export function EditTopicDialog({ topic, onClose, onSaved }: EditTopicDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={topic !== null} onClose={onClose} title="Edit topic" blocked={busy}>
+    <GuardedDialog discard="Discard your changes?" open={topic !== null} onClose={onClose} title="Edit topic" blocked={busy}>
       {topic ? <EditForm topic={topic} busy={busy} setBusy={setBusy} onClose={onClose} onSaved={onSaved} /> : null}
-    </Dialog>
+    </GuardedDialog>
   );
 }
 
@@ -39,6 +42,15 @@ function EditForm({
   const [errors, setErrors] = useState<{ title?: string; description?: string; cover?: string }>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ field: 'title' | 'cover' } | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  // What the person has changed so far; Save is only possible when there is something, and shows it first.
+  const review = changesOf(
+    textChange('Title', topic.title, title),
+    textChange('Description', topic.description, description),
+    coverChange(Boolean(topic.coverUrl), cover),
+  );
+  const dirty = review.length > 0;
+  const requestClose = useDialogGuard(dirty);
 
   useEffect(() => {
     if (focusRequest) (focusRequest.field === 'title' ? titleRef : coverRef).current?.focus();
@@ -54,6 +66,14 @@ function EditForm({
       return;
     }
     setErrors({});
+    if (!dirty) return;
+    setReviewing(true);
+  }
+
+  // Runs once the person has confirmed the list of changes.
+  async function save() {
+    setReviewing(false);
+    setFailure(null);
     const changes: { title?: string; description?: string } = {};
     if (title.trim() !== topic.title) changes.title = title.trim();
     if (description.trim() !== (topic.description ?? '')) changes.description = description.trim();
@@ -101,23 +121,22 @@ function EditForm({
         onChange={(e) => setDescription(e.target.value)}
         error={errors.description}
       />
-      <TextField
+      <CurrentCover url={topic.coverUrl ?? null} />
+      <CoverField
         ref={coverRef}
-        label="Cover image"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
         hint={topic.coverUrl ? 'Choosing a file replaces the current cover. JPEG, PNG or WebP, up to 10 MB.' : 'Optional. JPEG, PNG or WebP, up to 10 MB.'}
-        onChange={(e) => setCover(e.target.files?.[0] ?? null)}
+        onChange={setCover}
         error={errors.cover}
       />
       <div className={media.dialogActions}>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" onClick={requestClose} disabled={busy}>
           Cancel
         </Button>
-        <Button type="submit" busy={busy}>
+        <Button type="submit" busy={busy} disabled={!dirty}>
           Save
         </Button>
       </div>
+      <ChangesDialog open={reviewing} changes={review} onBack={() => setReviewing(false)} onConfirm={() => void save()} />
     </form>
   );
 }

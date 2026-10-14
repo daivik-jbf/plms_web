@@ -3,12 +3,12 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
 import { DB, type Database, type DbExecutor } from '../db/db.module';
-import { courses, type Lesson, lessons } from '../db/schema';
+import { type AuditChanges, courses, type Lesson, lessons } from '../db/schema';
 import { type CoverOwner, type CoverUpload, CoversService } from '../media/covers.service';
 import type { CoverStartInput } from '../media/media.schemas';
 import { actorOf } from '../media/actor';
 import { applyOrder } from '../media/reorder';
-import type { LessonInput } from './courses.schemas';
+import type { CreateLessonInput, LessonInput } from './courses.schemas';
 import { type CourseTree, CoursesService } from './courses.service';
 
 const NOT_FOUND = 'Lesson not found.';
@@ -23,7 +23,7 @@ export class LessonsService {
     private readonly covers: CoversService,
   ) {}
 
-  async add(actor: AuthUser, courseId: string, input: LessonInput): Promise<CourseTree> {
+  async add(actor: AuthUser, courseId: string, input: CreateLessonInput): Promise<CourseTree> {
     await this.db.transaction(async (tx) => {
       // The course row is locked, so two people adding at once get different positions.
       const course = await this.courses.requireCourse(tx, courseId, true);
@@ -31,7 +31,8 @@ export class LessonsService {
         .select({ next: sql<number>`coalesce(max(${lessons.position}), -1) + 1`.mapWith(Number) })
         .from(lessons)
         .where(eq(lessons.courseId, courseId));
-      const [lesson] = await tx.insert(lessons).values({ courseId, title: input.title, position: next, createdBy: actor.id }).returning();
+      const [lesson] = await tx.insert(lessons).values({ courseId, title: input.title, description: input.description ?? null, position: next, createdBy: actor.id })
+        .returning();
       await this.audit.record(tx, {
         actor: actorOf(actor),
         action: 'content.lesson.added',
@@ -45,13 +46,19 @@ export class LessonsService {
   async rename(actor: AuthUser, id: string, input: LessonInput): Promise<CourseTree> {
     const courseId = await this.db.transaction(async (tx) => {
       const lesson = await this.requireLesson(tx, id, true);
-      if (lesson.title !== input.title) {
-        await tx.update(lessons).set({ title: input.title, updatedAt: new Date() }).where(eq(lessons.id, id));
+      const changes: AuditChanges = {};
+      if (input.title !== undefined && input.title !== lesson.title) changes.title = { before: lesson.title, after: input.title };
+      if (input.description !== undefined && input.description !== lesson.description) {
+        changes.description = { before: lesson.description, after: input.description };
+      }
+      if (Object.keys(changes).length > 0) {
+        await tx.update(lessons).set({ title: input.title, description: input.description, updatedAt: new Date() }).where(eq(lessons.id, id));
         await this.audit.record(tx, {
           actor: actorOf(actor),
-          action: 'content.lesson.renamed',
-          target: { type: 'lesson', id, label: input.title },
-          changes: { title: { before: lesson.title, after: input.title } },
+          // Only the title changed: a rename; the description too, or alone: an edit.
+          action: changes.description ? 'content.lesson.edited' : 'content.lesson.renamed',
+          target: { type: 'lesson', id, label: input.title ?? lesson.title },
+          changes,
           metadata: { courseId: lesson.courseId },
         });
       }

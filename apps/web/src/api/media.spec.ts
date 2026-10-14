@@ -12,7 +12,6 @@ import {
   listMyUploads,
   playItem,
   renameFolder,
-  reorderFolders,
   reorderItems,
   startAttachmentUpload,
   startUpload,
@@ -51,27 +50,22 @@ describe('media api', () => {
     await listFolders('videos');
     await createFolder('videos', 'Safety');
     await renameFolder('f1', 'Safe');
-    await reorderFolders('videos', ['b', 'a']);
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'GET /api/media/videos/folders',
       'POST /api/media/videos/folders',
       'PATCH /api/media/folders/f1',
-      'PUT /api/media/videos/folders/order',
     ]);
     expect(calls[1]?.body).toEqual({ name: 'Safety' });
     expect(calls[2]?.body).toEqual({ name: 'Safe' });
-    expect(calls[3]?.body).toEqual({ ids: ['b', 'a'] });
   });
 
   it.each(['movies', 'podcasts', 'songs'] as const)('uses /api/media/%s for that category', async (slug) => {
     const calls = record({ [`GET /api/media/${slug}/folders`]: [], [`POST /api/media/${slug}/folders`]: { id: 'f1' } });
     await listFolders(slug);
     await createFolder(slug, 'Mix');
-    await reorderFolders(slug, ['a']);
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       `GET /api/media/${slug}/folders`,
       `POST /api/media/${slug}/folders`,
-      `PUT /api/media/${slug}/folders/order`,
     ]);
   });
 

@@ -1,13 +1,14 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, eq, or, type SQL } from 'drizzle-orm';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { and, asc, count, eq, inArray, or, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
 import { DB, type Database, type DbExecutor } from '../db/db.module';
-import { type AuditChanges, type FileRow, files, type MediaItem, mediaFolders, mediaItems, users } from '../db/schema';
+import { type AuditChanges, type FileRow, files, type MediaItem, mediaFolders, mediaItems, topicAttachments, users } from '../db/schema';
 import { LINK_TTL_SECONDS } from '../storage/storage.constants';
 import { STORAGE, type StoragePort } from '../storage/storage.port';
 import { actorOf } from './actor';
+import { discardStoredFile } from './discard';
 import type { MediaCategory } from './media-kinds';
 import { ORDER_CHANGED_MESSAGE, type UpdateItemInput } from './media.schemas';
 
@@ -46,6 +47,8 @@ const visibleTo = (item: Pick<MediaItem, 'status' | 'createdBy'>, actor: AuthUse
 
 @Injectable()
 export class ItemsService {
+  private readonly logger = new Logger(ItemsService.name);
+
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(STORAGE) private readonly storage: StoragePort,
@@ -98,6 +101,33 @@ export class ItemsService {
       });
     });
     return this.view(id, actor);
+  }
+
+  // Deletes a finished item for good: its row, its file and its cover, then the stored objects. An item that a course
+  // still uses stays; the course has to let go of it first.
+  async remove(actor: AuthUser, id: string): Promise<void> {
+    const removedFiles = await this.db.transaction(async (tx) => {
+      const [item] = await tx.select().from(mediaItems).where(eq(mediaItems.id, id)).for('update');
+      if (!item || !visibleTo(item, actor)) throw new NotFoundException(NOT_FOUND);
+      if (item.status !== 'ready') throw new ConflictException('This is still uploading. Cancel the upload instead.');
+      const folder = await this.requireFolder(tx, item.folderId);
+      const [{ total }] = await tx.select({ total: count() }).from(topicAttachments).where(eq(topicAttachments.libraryItemId, id));
+      if (total > 0) {
+        throw new ConflictException(`This is used in ${total === 1 ? 'a course topic' : `${total} course topics`}. Remove it from the course first.`);
+      }
+      await tx.delete(mediaItems).where(eq(mediaItems.id, id));
+      const fileIds = [item.mediaFileId, item.coverFileId].filter((fileId): fileId is string => fileId !== null);
+      const removed = await tx.delete(files).where(inArray(files.id, fileIds)).returning({ id: files.id, storageKey: files.storageKey, uploadId: files.uploadId });
+      await this.audit.record(tx, {
+        actor: actorOf(actor),
+        action: 'content.video.deleted',
+        target: { type: folder.category, id, label: item.title },
+        metadata: { category: folder.category, folderId: folder.id, folderName: folder.name },
+      });
+      return removed;
+    });
+    // The database is the source of truth: a stored object that cannot be removed now is only waste.
+    await Promise.all(removedFiles.map((file) => discardStoredFile(this.storage, this.logger, file)));
   }
 
   async reorder(actor: AuthUser, folderId: string, ids: string[]): Promise<ItemView[]> {

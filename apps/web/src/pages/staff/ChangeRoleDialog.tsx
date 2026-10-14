@@ -2,7 +2,8 @@ import { type FormEvent, useState } from 'react';
 import type { Person, Role } from '../../api/staff';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { Dialog } from '../../components/Dialog';
+import { type Change, ChangesDialog } from '../../components/ChangesDialog';
+import { GuardedDialog, useDialogGuard } from '../../components/GuardedDialog';
 import { Select } from '../../components/Select';
 import styles from './StaffPage.module.css';
 
@@ -16,18 +17,24 @@ interface ChangeRoleDialogProps {
 
 export function ChangeRoleDialog({ person, busy, error, onSave, onClose }: ChangeRoleDialogProps) {
   return (
-    <Dialog open={person !== null} onClose={onClose} title="Change role" blocked={busy}>
-      {person ? <RoleForm person={person} busy={busy} error={error} onSave={onSave} onClose={onClose} /> : null}
-    </Dialog>
+    <GuardedDialog discard="Discard the role change?" open={person !== null} onClose={onClose} title="Change role" blocked={busy}>
+      {person ? <RoleForm person={person} busy={busy} error={error} onSave={onSave} /> : null}
+    </GuardedDialog>
   );
 }
 
-function RoleForm({ person, busy, error, onSave, onClose }: Omit<ChangeRoleDialogProps, 'person'> & { person: Person }) {
+const ROLE_NAMES: Record<Role, string> = { staff: 'Staff', admin: 'Admin' };
+
+function RoleForm({ person, busy, error, onSave }: Omit<ChangeRoleDialogProps, 'person' | 'onClose'> & { person: Person }) {
   const [role, setRole] = useState<Role>(person.role);
+  const [reviewing, setReviewing] = useState(false);
+  const dirty = role !== person.role;
+  const review: Change[] = dirty ? [{ field: 'Role', before: ROLE_NAMES[person.role], after: ROLE_NAMES[role] }] : [];
+  const requestClose = useDialogGuard(dirty);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    onSave(role);
+    if (dirty) setReviewing(true);
   }
 
   return (
@@ -41,13 +48,22 @@ function RoleForm({ person, busy, error, onSave, onClose }: Omit<ChangeRoleDialo
         <option value="admin">Admin</option>
       </Select>
       <div className={styles.dialogActions}>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" onClick={requestClose} disabled={busy}>
           Cancel
         </Button>
         <Button type="submit" busy={busy} disabled={role === person.role}>
           Save
         </Button>
       </div>
+      <ChangesDialog
+        open={reviewing}
+        changes={review}
+        onBack={() => setReviewing(false)}
+        onConfirm={() => {
+          setReviewing(false);
+          onSave(role);
+        }}
+      />
     </form>
   );
 }

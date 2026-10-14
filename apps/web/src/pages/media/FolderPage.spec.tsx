@@ -3,20 +3,22 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { User } from '../../api/auth';
 import type { CategorySlug, Folder, MediaItem } from '../../api/media';
 import { type CategoryConfig, CATEGORIES } from '../../media/categories';
 import { DockedPlayer } from '../../player/DockedPlayer';
 import { PlayerContext, PlayerProvider, type PlayerValue } from '../../player/PlayerContext';
 import type { MockResponse } from '../../test/fetch-mock';
-import { mockSession, renderWithSession, STAFF } from '../../test/session';
+import { ADMIN, mockSession, renderWithSession, STAFF } from '../../test/session';
 import { type UploadJob, UploadsContext, type UploadsValue } from '../../uploads/UploadsContext';
+import { makeFolder } from '../../test/folders';
 import { FolderPage } from './FolderPage';
 
 const VIDEOS = CATEGORIES.find((entry) => entry.slug === 'videos')!;
 const MOVIES = CATEGORIES.find((entry) => entry.slug === 'movies')!;
 const SONGS = CATEGORIES.find((entry) => entry.slug === 'songs')!;
 
-const folder: Folder = { id: 'f1', name: 'Safety Training', position: 0, itemCount: 3, category: 'video' };
+const folder: Folder = makeFolder({ id: 'f1', name: 'Safety Training', itemCount: 3 });
 const item = (overrides: Partial<MediaItem> & { id: string; title: string }): MediaItem => ({
   folderId: 'f1',
   description: null,
@@ -38,10 +40,10 @@ const fixture: MediaItem[] = [
 
 type Override = MockResponse | ((body: Record<string, unknown>) => MockResponse);
 
-function startServer(overrides: Record<string, Override> = {}, items: MediaItem[] = fixture, folders: Folder[] = [folder], slug: CategorySlug = 'videos') {
+function startServer(overrides: Record<string, Override> = {}, items: MediaItem[] = fixture, folders: Folder[] = [folder], slug: CategorySlug = 'videos', user: User = STAFF) {
   const state = { items: structuredClone(items) };
   const calls: { key: string; body: Record<string, unknown> }[] = [];
-  mockSession(STAFF, (url, init) => {
+  mockSession(user, (url, init) => {
     const key = `${init.method ?? 'GET'} ${url}`;
     const body = typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {};
     calls.push({ key, body });
@@ -55,6 +57,11 @@ function startServer(overrides: Record<string, Override> = {}, items: MediaItem[
       const target = state.items.find((candidate) => candidate.id === edit[1])!;
       Object.assign(target, body);
       return { body: target };
+    }
+    const removal = /^DELETE \/api\/media\/items\/([^/]+)$/.exec(key);
+    if (removal) {
+      state.items = state.items.filter((candidate) => candidate.id !== removal[1]);
+      return { status: 204, body: null };
     }
     if (key === 'PUT /api/media/folders/f1/items/order') {
       const ids = body.ids as string[];
@@ -193,6 +200,7 @@ describe('FolderPage', () => {
     await userEvent.clear(title);
     await userEvent.type(title, 'Fire exits and drills');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
     expect(await screen.findByRole('button', { name: 'Fire exits and drills' })).toBeInTheDocument();
     expect(calls.find((call) => call.key === 'PATCH /api/media/items/v1')?.body).toEqual({ title: 'Fire exits and drills' });
   });
@@ -217,6 +225,7 @@ describe('FolderPage', () => {
     const dialog = screen.getByRole('dialog', { name: 'Edit video' });
     await userEvent.type(within(dialog).getByLabelText('Title'), ' more');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
     expect(await within(dialog).findByText('Title must be 200 characters or fewer.')).toBeInTheDocument();
   });
 
@@ -321,6 +330,36 @@ describe('FolderPage', () => {
     expect(within(dialog).queryByRole('alert')).toBeNull();
   });
 
+  it('gives staff no delete button', async () => {
+    startServer();
+    renderPage();
+    await screen.findByRole('heading', { name: 'Safety Training' });
+    expect(screen.queryByRole('button', { name: /^Delete / })).toBeNull();
+  });
+
+  it('lets an Admin delete a video for good after confirming, and drops it from the list', async () => {
+    const calls = startServer({}, fixture, [folder], 'videos', ADMIN);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete Fire exits' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete video' });
+    expect(dialog).toHaveTextContent('Delete the video "Fire exits" for good?');
+    expect(calls.some((call) => call.key.startsWith('DELETE'))).toBe(false);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete for good' }));
+    expect(await screen.findByText('Video "Fire exits" deleted.')).toBeInTheDocument();
+    expect(calls.some((call) => call.key === 'DELETE /api/media/items/v1')).toBe(true);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Fire exits' })).toBeNull());
+  });
+
+  it('keeps the dialog open and says why when the server refuses the delete', async () => {
+    startServer({ 'DELETE /api/media/items/v1': { status: 409, body: { message: 'This is used in a course topic. Remove it from the course first.' } } }, fixture, [folder], 'videos', ADMIN);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete Fire exits' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete video' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete for good' }));
+    expect(await within(dialog).findByText('This is used in a course topic. Remove it from the course first.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fire exits' })).toBeInTheDocument();
+  });
+
   it('puts an Upload video button on the page that opens the upload dialog', async () => {
     startServer();
     renderPage();
@@ -348,7 +387,7 @@ describe('FolderPage', () => {
 describe('FolderPage for the other categories', () => {
   beforeEach(() => vi.unstubAllGlobals());
 
-  const songFolder: Folder = { id: 'f1', name: 'Road trip', position: 0, itemCount: 2, category: 'song' };
+  const songFolder: Folder = makeFolder({ id: 'f1', name: 'Road trip', itemCount: 2, category: 'song' });
   const songs: MediaItem[] = [
     item({ id: 's1', title: 'Morning song', category: 'song', durationSeconds: 185, sizeBytes: 6 * 1024 ** 2 }),
     item({ id: 's2', title: '<img src=x onerror=alert(1)>', category: 'song', position: 1 }),
@@ -417,7 +456,7 @@ describe('FolderPage for the other categories', () => {
 
   it('opens a movie in the pop-up player, like a video, and never in the dock', async () => {
     const player = fakePlayer();
-    const movieFolder: Folder = { id: 'f1', name: 'Classics', position: 0, itemCount: 1, category: 'movie' };
+    const movieFolder: Folder = makeFolder({ id: 'f1', name: 'Classics', itemCount: 1, category: 'movie' });
     startServer(
       { 'POST /api/media/items/m1/play': { body: { url: 'https://cdn.example/m1?sig=1', expiresAt: '2026-10-09T11:00:00Z', contentType: 'video/mp4' } } },
       [item({ id: 'm1', title: 'The long walk', category: 'movie' })],
@@ -440,6 +479,7 @@ describe('FolderPage for the other categories', () => {
     const dialog = screen.getByRole('dialog', { name: 'Edit song' });
     await userEvent.type(within(dialog).getByLabelText('Title'), ' (live)');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
     expect(await screen.findByText('Song saved.')).toBeInTheDocument();
   });
 

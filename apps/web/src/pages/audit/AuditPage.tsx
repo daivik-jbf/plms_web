@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { type AuditEntry, exportAudit, filtersFromParams, filtersToParams, listAudit, markAuditOpened, type AuditFilters } from '../../api/audit';
 import { ApiError, describeError } from '../../api/client';
 import { listPeople, type Person } from '../../api/staff';
@@ -140,9 +140,12 @@ export function AuditPage() {
         <h1 ref={heading} tabIndex={-1}>
           Audit log
         </h1>
-        <Button variant="secondary" busy={exporting} onClick={() => void onExport()}>
-          Export CSV
-        </Button>
+        <div className={styles.headerActions}>
+          <Link to="/audit/analytics">Analytics and reports</Link>
+          <Button variant="secondary" busy={exporting} onClick={() => void onExport()}>
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {exportError ? <Alert tone="error">{exportError}</Alert> : null}

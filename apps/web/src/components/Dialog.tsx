@@ -9,6 +9,9 @@ interface DialogProps {
   // While true (a request is running) the user cannot dismiss the dialog: Esc, the back gesture, light dismiss,
   // click-outside and the Close button are all ignored.
   blocked?: boolean;
+  // When given, Esc, the back gesture, light dismiss, click-outside and the Close button ask this instead of closing, so the
+  // owner can ask first ("discard what you typed?") and then close by setting `open` to false.
+  onDismissRequest?: () => void;
   children: ReactNode;
 }
 
@@ -16,7 +19,7 @@ interface DialogProps {
 const supportsClosedBy = typeof HTMLDialogElement !== 'undefined' && 'closedBy' in HTMLDialogElement.prototype;
 const LIGHT_DISMISS = { closedby: 'any' } as Record<string, string>;
 
-export function Dialog({ open, onClose, title, side = 'center', blocked = false, children }: DialogProps) {
+export function Dialog({ open, onClose, title, side = 'center', blocked = false, onDismissRequest, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -40,20 +43,29 @@ export function Dialog({ open, onClose, title, side = 'center', blocked = false,
   }, [onClose]);
 
   // The native `cancel` event precedes Esc, the back gesture and light dismiss; cancelling it keeps the dialog open.
+  const dismissRequest = useRef(onDismissRequest);
+  dismissRequest.current = onDismissRequest;
+  const asksFirst = onDismissRequest !== undefined;
   useEffect(() => {
     const dialog = ref.current;
-    if (!dialog || !blocked) return;
-    const keepOpen = (event: Event) => event.preventDefault();
+    if (!dialog || !(blocked || asksFirst)) return;
+    const keepOpen = (event: Event) => {
+      event.preventDefault();
+      if (!blocked) dismissRequest.current?.();
+    };
     dialog.addEventListener('cancel', keepOpen);
     return () => dialog.removeEventListener('cancel', keepOpen);
-  }, [blocked]);
+  }, [blocked, asksFirst]);
 
   function onBackdropClick(event: MouseEvent<HTMLDialogElement>) {
     if (blocked || supportsClosedBy || event.target !== event.currentTarget) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const inside =
       rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
-    if (!inside) event.currentTarget.close();
+    if (!inside) {
+      if (dismissRequest.current) dismissRequest.current();
+      else event.currentTarget.close();
+    }
   }
 
   return (
@@ -70,7 +82,7 @@ export function Dialog({ open, onClose, title, side = 'center', blocked = false,
           <h2 id={titleId} className={styles.title}>
             {title}
           </h2>
-          <button type="button" className={styles.close} aria-label="Close" disabled={blocked} onClick={() => ref.current?.close()}>
+          <button type="button" className={styles.close} aria-label="Close" disabled={blocked} onClick={() => (onDismissRequest ? onDismissRequest() : ref.current?.close())}>
             ×
           </button>
         </header>

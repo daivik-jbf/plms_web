@@ -91,3 +91,43 @@ export const markAuditOpened = (): Promise<void> => api<void>('/api/audit/opened
 
 export const exportAudit = (filters: AuditFilters): Promise<{ blob: Blob; filename: string }> =>
   apiDownload(`/api/audit/export.csv${auditQueryString(filters)}`);
+
+export type AuditOperation = 'created' | 'edited' | 'moved' | 'deleted' | 'restored' | 'purged';
+
+export interface AuditAnalytics {
+  range: { from: string; to: string };
+  totals: {
+    events: number;
+    activePeople: number;
+    contentChanges: number;
+    uploadsFinished: number;
+    failedSignIns: number;
+    securityEvents: number;
+    exports: number;
+  };
+  daily: { day: string; total: number; changes: number; security: number }[];
+  hourly: { hour: number; total: number }[];
+  byCategory: Record<AuditCategory, number>;
+  byOperation: Record<AuditOperation, number>;
+  byAction: { action: string; label: string; count: number }[];
+  topPeople: { id: string; name: string | null; label: string | null; role: Role | null; count: number; lastActiveAt: string }[];
+  bySource: { source: string; count: number }[];
+  security: {
+    byAction: { action: string; label: string; count: number }[];
+    failedSignInAddresses: { ip: string; count: number }[];
+  };
+}
+
+export const ANALYTICS_PERIODS = [7, 30, 90, 365] as const;
+export const DEFAULT_ANALYTICS_DAYS = 30;
+
+// The period is "the last N days up to now"; the server limits it to 366 days.
+export function periodQuery(days: number, now: Date = new Date()): string {
+  const from = new Date(now.getTime() - days * 86_400_000);
+  return `?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(now.toISOString())}`;
+}
+
+export const getAuditAnalytics = (days: number): Promise<AuditAnalytics> => api(`/api/audit/analytics${periodQuery(days)}`);
+
+export const exportAuditReport = (days: number): Promise<{ blob: Blob; filename: string }> =>
+  apiDownload(`/api/audit/report.csv${periodQuery(days)}`);

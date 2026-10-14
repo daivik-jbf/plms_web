@@ -10,7 +10,7 @@ import {
   listCourses,
   openAttachment,
   updateAttachment,
-  renameLesson,
+  updateLesson,
   reorderAttachments,
   reorderCourses,
   reorderLessons,
@@ -82,7 +82,7 @@ describe('lesson and topic api', () => {
       return { body: {} };
     });
     await addLesson('c1', 'Exits');
-    await renameLesson('l1', 'Exit routes');
+    await updateLesson('l1', { title: 'Exit routes' });
     await reorderLessons('c1', ['l2', 'l1']);
     await addTopic('l1', 'Fire exits');
     await reorderTopics('l1', ['t2', 't1']);

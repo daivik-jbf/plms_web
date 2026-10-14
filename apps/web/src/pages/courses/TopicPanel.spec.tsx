@@ -9,6 +9,7 @@ import { type UploadJob, UploadsContext, type UploadsValue } from '../../uploads
 import type { MockResponse } from '../../test/fetch-mock';
 import { ADMIN, mockSession, renderWithSession, STAFF } from '../../test/session';
 import { ATTACHMENT_ACCEPT } from '../../uploads/limits';
+import { makeFolder } from '../../test/folders';
 import { TopicPanel } from './TopicPanel';
 
 const attachment = (overrides: Partial<Attachment> & { id: string; title: string }): Attachment => ({
@@ -60,10 +61,10 @@ const topic = (attachments: Attachment[], overrides: Partial<TopicDetail> = {}):
 });
 
 const folders: Folder[] = [
-  { id: 'f1', name: 'Safety Training', position: 0, itemCount: 2, category: 'video' },
-  { id: 'f2', name: 'Kitchen', position: 1, itemCount: 0, category: 'video' },
+  makeFolder({ id: 'f1', name: 'Safety Training', position: 0, itemCount: 2 }),
+  makeFolder({ id: 'f2', name: 'Kitchen', position: 1 }),
 ];
-const songFolders: Folder[] = [{ id: 'sf1', name: 'Road trip', position: 0, itemCount: 1, category: 'song' }];
+const songFolders: Folder[] = [makeFolder({ id: 'sf1', name: 'Road trip', position: 0, itemCount: 1, category: 'song' })];
 const libraryItem = (overrides: Partial<MediaItem> & { id: string; title: string }): MediaItem => ({
   folderId: 'f1',
   description: null,
@@ -356,6 +357,7 @@ describe('TopicPanel attachments', () => {
       await userEvent.type(field, '  Exit route map ');
       await userEvent.type(within(dialog).getByLabelText('Description'), 'Where to go.');
       await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       expect(await screen.findByText('Attachment "Exit route map" saved.')).toBeInTheDocument();
       expect(calls.find((call) => call.key === 'PATCH /api/attachments/a1')?.body).toEqual({ title: 'Exit route map', description: 'Where to go.' });
       expect(await screen.findByRole('row', { name: /Exit route map/ })).toBeInTheDocument();
@@ -367,7 +369,7 @@ describe('TopicPanel attachments', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Edit Exit map' }));
       expect(within(screen.getByRole('dialog', { name: 'Edit attachment' })).getByLabelText('Cover image')).toBeInTheDocument();
       await userEvent.click(within(screen.getByRole('dialog', { name: 'Edit attachment' })).getByRole('button', { name: 'Cancel' }));
-      await userEvent.click(screen.getByRole('button', { name: 'Edit Library film' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Edit Library film' }));
       expect(within(screen.getByRole('dialog', { name: 'Edit attachment' })).queryByLabelText('Cover image')).toBeNull();
     });
 
@@ -405,7 +407,7 @@ describe('TopicPanel attachments', () => {
       await userEvent.click(within(screen.getByRole('dialog', { name: 'Delete attachment' })).getByRole('button', { name: 'Cancel' }));
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(calls.some((call) => call.key.startsWith('DELETE'))).toBe(false);
-      await userEvent.click(screen.getByRole('button', { name: 'Delete Exit map' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Delete Exit map' }));
       const dialog = screen.getByRole('dialog', { name: 'Delete attachment' });
       await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Trash' }));
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('Cancel the upload instead.');

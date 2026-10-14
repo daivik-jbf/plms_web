@@ -1,13 +1,15 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq, sql } from 'drizzle-orm';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { asc, count, eq, inArray, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
 import { DB, type Database, type DbExecutor } from '../db/db.module';
 import { isUniqueViolation } from '../db/errors';
-import { mediaFolders, mediaItems } from '../db/schema';
+import { files, mediaFolders, mediaItems, topicAttachments, users } from '../db/schema';
+import { STORAGE, type StoragePort } from '../storage/storage.port';
 import { actorOf } from './actor';
-import { MEDIA_CATEGORIES, type MediaCategory } from './media-kinds';
-import { ORDER_CHANGED_MESSAGE } from './media.schemas';
+import { discardStoredFile } from './discard';
+import type { MediaCategory } from './media-kinds';
 
 const NAME_TAKEN = 'A folder with that name already exists.';
 
@@ -16,30 +18,66 @@ export interface FolderView {
   name: string;
   position: number;
   itemCount: number;
+  // The bytes of every ready item's file and cover.
+  sizeBytes: number;
   category: MediaCategory;
+  createdAt: string;
+  createdBy: { id: string; name: string };
+  updatedAt: string;
+  // The creator until someone changes the folder.
+  updatedBy: { id: string; name: string };
 }
+
+const mediaFile = alias(files, 'media_file');
+const coverFile = alias(files, 'cover_file');
+const creator = alias(users, 'creator');
+const updater = alias(users, 'updater');
 
 @Injectable()
 export class FoldersService {
+  private readonly logger = new Logger(FoldersService.name);
+
   constructor(
     @Inject(DB) private readonly db: Database,
+    @Inject(STORAGE) private readonly storage: StoragePort,
     private readonly audit: AuditService,
   ) {}
 
-  list(category: MediaCategory, executor: DbExecutor = this.db): Promise<FolderView[]> {
-    return executor
+  async list(category: MediaCategory, executor: DbExecutor = this.db): Promise<FolderView[]> {
+    const rows = await executor
       .select({
         id: mediaFolders.id,
         name: mediaFolders.name,
         position: mediaFolders.position,
         itemCount: sql<number>`count(${mediaItems.id}) filter (where ${mediaItems.status} = 'ready')`.mapWith(Number),
+        sizeBytes: sql<number>`coalesce(sum(${mediaFile.sizeBytes} + coalesce(${coverFile.sizeBytes}, 0)) filter (where ${mediaItems.status} = 'ready'), 0)`.mapWith(Number),
         category: mediaFolders.category,
+        createdAt: mediaFolders.createdAt,
+        createdBy: { id: creator.id, name: creator.name },
+        updatedAt: mediaFolders.updatedAt,
+        updatedBy: { id: updater.id, name: updater.name },
       })
       .from(mediaFolders)
+      .innerJoin(creator, eq(creator.id, mediaFolders.createdBy))
+      .leftJoin(updater, eq(updater.id, mediaFolders.updatedBy))
       .leftJoin(mediaItems, eq(mediaItems.folderId, mediaFolders.id))
+      .leftJoin(mediaFile, eq(mediaFile.id, mediaItems.mediaFileId))
+      .leftJoin(coverFile, eq(coverFile.id, mediaItems.coverFileId))
       .where(eq(mediaFolders.category, category))
-      .groupBy(mediaFolders.id)
+      .groupBy(mediaFolders.id, creator.id, updater.id)
       .orderBy(asc(mediaFolders.position), asc(mediaFolders.createdAt), asc(mediaFolders.id));
+    return rows.map((row) => ({
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      updatedBy: row.updatedBy ?? row.createdBy,
+    }));
+  }
+
+  private async view(executor: DbExecutor, category: MediaCategory, id: string): Promise<FolderView> {
+    const view = (await this.list(category, executor)).find((candidate) => candidate.id === id);
+    if (!view) throw new NotFoundException('Folder not found.');
+    return view;
   }
 
   create(actor: AuthUser, category: MediaCategory, name: string): Promise<FolderView> {
@@ -61,7 +99,7 @@ export class FoldersService {
         target: { type: 'folder', id: folder.id, label: folder.name },
         metadata: { category },
       });
-      return { id: folder.id, name: folder.name, position: folder.position, itemCount: 0, category };
+      return this.view(tx, category, folder.id);
     });
   }
 
@@ -71,7 +109,7 @@ export class FoldersService {
       if (!folder) throw new NotFoundException('Folder not found.');
       if (folder.name !== name) {
         try {
-          await tx.update(mediaFolders).set({ name, updatedAt: new Date() }).where(eq(mediaFolders.id, id));
+          await tx.update(mediaFolders).set({ name, updatedAt: new Date(), updatedBy: actor.id }).where(eq(mediaFolders.id, id));
         } catch (error) {
           if (isUniqueViolation(error)) throw new ConflictException(NAME_TAKEN);
           throw error;
@@ -84,40 +122,43 @@ export class FoldersService {
           metadata: { category: folder.category },
         });
       }
-      const view = (await this.list(folder.category, tx)).find((candidate) => candidate.id === id);
-      if (!view) throw new NotFoundException('Folder not found.');
-      return view;
+      return this.view(tx, folder.category, id);
     });
   }
 
-  reorder(actor: AuthUser, category: MediaCategory, ids: string[]): Promise<FolderView[]> {
-    return this.db.transaction(async (tx) => {
-      // Locked in id order so two people reordering at once cannot deadlock.
-      const locked = await tx
-        .select({ id: mediaFolders.id, position: mediaFolders.position, createdAt: mediaFolders.createdAt })
-        .from(mediaFolders)
-        .where(eq(mediaFolders.category, category))
-        .orderBy(asc(mediaFolders.id))
-        .for('update');
-      const current = [...locked]
-        .sort((a, b) => a.position - b.position || a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
-        .map((folder) => folder.id);
-      const known = new Set(current);
-      if (ids.length !== current.length || new Set(ids).size !== ids.length || !ids.every((id) => known.has(id))) {
-        throw new ConflictException(ORDER_CHANGED_MESSAGE);
+  // Deletes the folder for good, with every item in it and their files and covers. A folder with something still uploading, or with
+  // an item that a course topic uses, stays: the person has to finish the upload, or take the item out of the course, first.
+  async remove(actor: AuthUser, id: string): Promise<void> {
+    const removedFiles = await this.db.transaction(async (tx) => {
+      const [folder] = await tx.select().from(mediaFolders).where(eq(mediaFolders.id, id)).for('update');
+      if (!folder) throw new NotFoundException('Folder not found.');
+      const items = await tx.select().from(mediaItems).where(eq(mediaItems.folderId, id)).orderBy(asc(mediaItems.id)).for('update');
+      if (items.some((item) => item.status !== 'ready')) {
+        throw new ConflictException('Something in this folder is still uploading. Finish or cancel the upload first.');
       }
-      if (ids.some((id, index) => id !== current[index])) {
-        for (const [index, id] of ids.entries()) {
-          await tx.update(mediaFolders).set({ position: index, updatedAt: new Date() }).where(eq(mediaFolders.id, id));
+      const itemIds = items.map((item) => item.id);
+      if (itemIds.length > 0) {
+        const [{ total }] = await tx.select({ total: count() }).from(topicAttachments).where(inArray(topicAttachments.libraryItemId, itemIds));
+        if (total > 0) {
+          throw new ConflictException(`${total === 1 ? 'An item in this folder is' : `${total} items in this folder are`} used in course topics. Remove ${total === 1 ? 'it' : 'them'} from the courses first.`);
         }
-        await this.audit.record(tx, {
-          actor: actorOf(actor),
-          action: 'content.folder.reordered',
-          target: { type: 'category', id: category, label: `${MEDIA_CATEGORIES[category].label} folders` },
-          metadata: { category },
-        });
       }
-      return this.list(category, tx);
+      let removed: { id: string; storageKey: string; uploadId: string | null }[] = [];
+      if (itemIds.length > 0) {
+        await tx.delete(mediaItems).where(eq(mediaItems.folderId, id));
+        const fileIds = items.flatMap((item) => [item.mediaFileId, item.coverFileId]).filter((fileId): fileId is string => fileId !== null);
+        removed = await tx.delete(files).where(inArray(files.id, fileIds)).returning({ id: files.id, storageKey: files.storageKey, uploadId: files.uploadId });
+      }
+      await tx.delete(mediaFolders).where(eq(mediaFolders.id, id));
+      await this.audit.record(tx, {
+        actor: actorOf(actor),
+        action: 'content.folder.deleted',
+        target: { type: 'folder', id, label: folder.name },
+        metadata: { category: folder.category, itemCount: items.length },
+      });
+      return removed;
     });
+    // The database is the source of truth: a stored object that cannot be removed now is only waste.
+    await Promise.all(removedFiles.map((file) => discardStoredFile(this.storage, this.logger, file)));
   }
 }

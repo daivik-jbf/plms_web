@@ -71,6 +71,27 @@
       "when": 1791806888068,
       "tag": "0009_attachment_trash",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791866928219,
+      "tag": "0010_lesson_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791880379363,
+      "tag": "0011_course_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791892189058,
+      "tag": "0012_folder_details",
+      "breakpoints": true
     }
   ]
 }

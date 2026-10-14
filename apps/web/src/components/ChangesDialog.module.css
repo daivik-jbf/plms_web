@@ -1,0 +1,42 @@
+.list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.before,
+.after {
+  display: flex;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.before {
+  color: var(--color-text-muted);
+}
+
+.tag {
+  flex: none;
+  min-width: 4.5rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}

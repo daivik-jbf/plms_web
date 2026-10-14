@@ -75,6 +75,7 @@ function failedSignIn({ entry }: Context): string {
 
 function exportedRows({ actor, entry }: Context): string {
   const count = entry.metadata?.rowCount;
+  if (entry.metadata?.report === 'summary') return `${actor} downloaded the audit activity report`;
   if (typeof count !== 'number') return `${actor} exported audit log rows`;
   return `${actor} exported ${count} audit log row${count === 1 ? '' : 's'}`;
 }
@@ -216,6 +217,16 @@ const SPECS: Record<AuditAction, ActionSpec> = {
     tone: 'neutral',
     summary: ({ actor, entry }) => `${actor} changed the order of the ${wordsFor(entry).noun} folders`,
   },
+  'content.folder.deleted': {
+    label: 'Folder deleted',
+    tone: 'danger',
+    summary: ({ actor, target, entry }) => {
+      const count = entry.metadata?.itemCount;
+      return typeof count === 'number' && count > 0
+        ? `${actor} deleted the ${wordsFor(entry).noun} folder ${target} for good, with ${count === 1 ? `its ${wordsFor(entry).noun}` : `its ${count} ${wordsFor(entry).noun}s`}`
+        : `${actor} deleted the ${wordsFor(entry).noun} folder ${target}`;
+    },
+  },
   'content.video.added': {
     label: 'Item added',
     tone: 'change',
@@ -235,6 +246,11 @@ const SPECS: Record<AuditAction, ActionSpec> = {
     label: 'Cover set',
     tone: 'change',
     summary: ({ actor, target, entry }) => `${actor} set the cover image of the ${wordsFor(entry).noun} ${target}`,
+  },
+  'content.video.deleted': {
+    label: 'Item deleted',
+    tone: 'danger',
+    summary: ({ actor, target, entry }) => `${actor} deleted the ${wordsFor(entry).noun} ${target} for good`,
   },
   'content.course.created': {
     label: 'Course created',
@@ -351,6 +367,11 @@ const SPECS: Record<AuditAction, ActionSpec> = {
       const title = changedText(entry, 'title');
       return title ? `${actor} renamed the lesson from ${quoted(title.before)} to ${quoted(title.after)}` : `${actor} renamed the lesson ${quoted(target)}`;
     },
+  },
+  'content.lesson.edited': {
+    label: 'Lesson edited',
+    tone: 'change',
+    summary: ({ actor, target }) => `${actor} edited the lesson ${quoted(target)}`,
   },
   'content.lesson.reordered': {
     label: 'Lessons reordered',

@@ -278,6 +278,20 @@
   cursor: pointer;
 }
 
+.bannerIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
 .bannerBack {
   display: inline-flex;
   align-items: center;
@@ -296,6 +310,7 @@
 }
 
 .bannerBack:focus-visible,
+.bannerIconButton:focus-visible,
 .bannerButton:focus-visible {
   outline: 2px solid #ffffff;
   outline-offset: 2px;
@@ -458,32 +473,9 @@
   font-weight: 600;
 }
 
-.actionList {
-  display: grid;
-  gap: var(--space-3);
-  justify-items: start;
-}
 
-.actionList button,
-.linkButton {
-  gap: var(--space-2);
-}
 
-.linkButton {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: var(--space-2) var(--space-6);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  color: var(--color-text);
-  font-weight: 500;
-  text-decoration: none;
-}
 
-.linkButton:hover {
-  background: var(--color-surface);
-}
 
 @media (max-width: 1100px) {
   .split {

@@ -2,7 +2,8 @@ import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'r
 import { ApiError, describeError } from '../../api/client';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { Dialog } from '../../components/Dialog';
+import { CoverField } from '../../components/CoverField';
+import { GuardedDialog, useDialogGuard } from '../../components/GuardedDialog';
 import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import type { CategoryConfig } from '../../media/categories';
@@ -23,9 +24,9 @@ interface UploadDialogProps {
 export function UploadDialog({ open, category, folderId, onClose, onStarted }: UploadDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={open} onClose={onClose} title={`Upload ${category.noun}`} blocked={busy}>
+    <GuardedDialog discard="Discard this upload? Nothing has been sent yet." open={open} onClose={onClose} title={`Upload ${category.noun}`} blocked={busy}>
       <UploadForm category={category} folderId={folderId} busy={busy} setBusy={setBusy} onClose={onClose} onStarted={onStarted} />
-    </Dialog>
+    </GuardedDialog>
   );
 }
 
@@ -54,6 +55,8 @@ function UploadForm({
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ field: Field } | null>(null);
+  // Something typed or chosen: closing the dialog asks first.
+  const requestClose = useDialogGuard(file !== null || title.trim() !== '' || description.trim() !== '' || cover !== null);
   // The length is read in the background while the person fills in the form; submitting waits for it.
   const duration = useRef<Promise<number | null>>(Promise.resolve(null));
 
@@ -138,17 +141,14 @@ function UploadForm({
         error={errors.title}
       />
       <TextArea ref={descriptionRef} label="Description" maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} error={errors.description} />
-      <TextField
+      <CoverField
         ref={coverRef}
-        label="Cover image"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
         hint="Optional. JPEG, PNG or WebP, up to 10 MB."
-        onChange={(e) => setCover(e.target.files?.[0] ?? null)}
+        onChange={setCover}
         error={errors.cover}
       />
       <div className={styles.dialogActions}>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" onClick={requestClose} disabled={busy}>
           Cancel
         </Button>
         <Button type="submit" busy={busy}>

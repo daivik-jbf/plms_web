@@ -82,3 +82,6 @@ One line per meaningful change, newest last.
 - 2026-10-12: Restyled Videos, Movies, Podcasts and Songs like the Courses pages (folder cards, a banner for the open folder, item cards).
 - 2026-10-12: Topics can be added with a description, and files in a topic (uploaded or from the library) have a description and an Edit button for title, description and cover.
 - 2026-10-12: Admins can delete a file in a topic; it goes to the Trash like courses, lessons and topics, and is restored or deleted for good from there.
+- 2026-10-13: Added audit analytics and a summary report: `GET /api/audit/analytics`, `GET /api/audit/report.csv` and an Admin Analytics page (activity per day and hour, what changed, most active people, security events, print or CSV).
+- 2026-10-13: Folders in Videos, Movies, Podcasts and Songs can be deleted (`DELETE /api/media/folders/:id`, Admin or Staff, for good, with every item in them); a folder with an upload still running or an item a course topic uses is refused. Recorded as `content.folder.deleted`.
+- 2026-10-13: Media folder cards now show their size, file count, created and updated dates and who made and last changed them; folders can no longer be reordered.

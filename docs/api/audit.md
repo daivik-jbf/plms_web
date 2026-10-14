@@ -11,6 +11,8 @@ This is the hand-written contract for the audit log read side, written from the 
 | `GET /api/audit` | One page of entries, newest first, with filters | 200 JSON |
 | `POST /api/audit/opened` | Record that an Admin opened the Audit log page | 204, no body |
 | `GET /api/audit/export.csv` | Download the filtered entries as a CSV file | 200 `text/csv` |
+| `GET /api/audit/analytics` | Summary numbers for a period | 200 JSON |
+| `GET /api/audit/report.csv` | Summary report for a period as a CSV file | 200 `text/csv` |
 
 ## `GET /api/audit`
 
@@ -36,7 +38,7 @@ All parameters are optional. Unknown parameters are ignored. A value that fails 
 Notes:
 
 - Filters combine with AND.
-- Known actions: `auth.login.succeeded`, `auth.login.failed`, `auth.logout`, `auth.logout_all`, `auth.refresh.reuse_detected`, `auth.password.changed`, `auth.password.reset_requested`, `auth.password.reset_completed`, `invite.created`, `invite.resent`, `invite.cancelled`, `invite.accepted`, `user.deactivated`, `user.reactivated`, `user.role_changed`, `audit.viewed`, `audit.exported`, `content.folder.created`, `content.folder.renamed`, `content.folder.reordered`, `content.video.added`, `content.video.edited`, `content.video.reordered`, `content.video.cover_set`, `file.upload_started`, `file.upload_completed`, `file.upload_failed`, `file.upload_cancelled`, `playback.played`, `content.course.created`, `content.course.edited`, `content.course.reordered`, `content.course.cover_set`, `content.lesson.added`, `content.lesson.renamed`, `content.lesson.reordered`, `content.topic.added`, `content.topic.edited`, `content.topic.reordered`, `content.attachment.added`, `content.attachment.renamed`, `content.attachment.reordered`, `playback.viewed`. The `action` filter accepts only these, even though the log can later contain others (see "Unknown actions").
+- Known actions: `auth.login.succeeded`, `auth.login.failed`, `auth.logout`, `auth.logout_all`, `auth.refresh.reuse_detected`, `auth.password.changed`, `auth.password.reset_requested`, `auth.password.reset_completed`, `invite.created`, `invite.resent`, `invite.cancelled`, `invite.accepted`, `user.deactivated`, `user.reactivated`, `user.role_changed`, `audit.viewed`, `audit.exported`, `content.folder.created`, `content.folder.renamed`, `content.folder.reordered`, `content.video.added`, `content.video.edited`, `content.video.reordered`, `content.video.cover_set`, `content.video.deleted`, `file.upload_started`, `file.upload_completed`, `file.upload_failed`, `file.upload_cancelled`, `playback.played`, `content.course.created`, `content.course.edited`, `content.course.reordered`, `content.course.cover_set`, `content.lesson.added`, `content.lesson.renamed`, `content.lesson.edited`, `content.lesson.reordered`, `content.topic.added`, `content.topic.edited`, `content.topic.reordered`, `content.attachment.added`, `content.attachment.renamed`, `content.attachment.reordered`, `playback.viewed`. The `action` filter accepts only these, even though the log can later contain others (see "Unknown actions").
 - Categories come from the part of the action before the first dot: `content.*` is `content`, `file.*` is `files`, `playback.*` and `download.*` are `playback`, and everything else is `accounts`. The sign-in, invite, user and audit actions are `accounts`; since milestone 3 the folder and video actions are `content`, the upload actions are `files` and `playback.played` is `playback`, so "Changes only" (the default) hides it. Upload failures and cancellations stay visible because they are `files` entries.
 
 ### Response (200)
@@ -147,6 +149,7 @@ The server generates `label`, `tone`, `category` and `summary` for every entry, 
 | `content.video.edited` | Item edited | change | content | `<actor> edited the <noun> <target>` (title and description before and after in `changes`) |
 | `content.video.reordered` | Items reordered | neutral | content | `<actor> changed the order of the <nouns> in <target>` (the target is the folder) |
 | `content.video.cover_set` | Cover set | change | content | `<actor> set the cover image of the <noun> <target>` |
+| `content.video.deleted` | Item deleted | danger | content | `<actor> deleted the <noun> <target> for good` |
 | `file.upload_started` | Upload started | neutral | files | `<actor> started uploading <target>` (metadata: `fileId`, `sizeBytes`, `partCount`) |
 | `file.upload_completed` | Upload finished | success | files | `<actor> finished uploading <target>` |
 | `file.upload_failed` | Upload failed | warning | files | `The upload of <target> failed (<reason>)`. Reasons (from `metadata.reason`): `size_mismatch` is "the file size did not match", `not_mp4` is "the file is not a valid MP4", `not_audio` is "the file is not a valid MP3 or M4A", `not_pdf` is "the file is not a valid PDF", `not_image` is "the file is not a valid JPEG, PNG or WebP image", `bad_image` is "the cover image is not valid", `expired` is "it was not finished within 24 hours"; with no recognised reason: `The upload of <target> failed`. An `expired` entry has no actor (the system cleans up abandoned uploads) |
@@ -159,6 +162,7 @@ The server generates `label`, `tone`, `category` and `summary` for every entry, 
 | `content.course.cover_set` | Course cover set | change | content | `<actor> set the cover image of the course '<target>'` |
 | `content.lesson.added` | Lesson added | change | content | `<actor> added the lesson '<target>' to the course '<metadata.courseTitle>'` (without the course when it was not recorded) |
 | `content.lesson.renamed` | Lesson renamed | change | content | `<actor> renamed the lesson from '<before>' to '<after>'` (from `changes.title`; without them: `<actor> renamed the lesson '<target>'`) |
+| `content.lesson.edited` | Lesson edited | change | content | `<actor> edited the lesson '<target>'` |
 | `content.lesson.reordered` | Lessons reordered | neutral | content | `<actor> changed the order of the lessons in the course '<target>'` |
 | `content.topic.added` | Topic added | change | content | `<actor> added the topic '<target>' to the lesson '<metadata.lessonTitle>'` (without the lesson when it was not recorded) |
 | `content.topic.edited` | Topic edited | change | content | `<actor> edited the topic '<target>'` |
@@ -235,6 +239,33 @@ Columns, in order:
 | 401 / 403 | Not signed in / not an Admin | as above |
 | 413 | More rows match than the cap | `{ "statusCode": 413, "error": "Payload Too Large", "message": "Too many rows to export (limit 50,000). Narrow the filters.", "requestId": "..." }` (the number is the configured `AUDIT_EXPORT_MAX_ROWS`, printed with a thousands separator; no entry is recorded) |
 | 429 | More than 10 exports per minute from one IP | see "Errors" below |
+
+## `GET /api/audit/analytics`
+
+Summary numbers for a period, for the Analytics page. Admin only.
+
+Query: `from` and `to`, both optional ISO 8601 date-times with a `Z` or offset (same rules as the list). The default is the last 30 days up to now. The period can be at most 366 days and the start must not be after the end; otherwise 400 with `fieldErrors.from`.
+
+Response (200):
+
+| Field | Meaning |
+| --- | --- |
+| `range` | `{ from, to }` as ISO strings, after defaults |
+| `totals` | `events`, `activePeople`, `contentChanges`, `uploadsFinished`, `failedSignIns`, `securityEvents`, `exports` |
+| `daily` | One entry per UTC day in the period, quiet days included as zeros: `{ day, total, changes, security }` |
+| `hourly` | Always 24 entries, UTC hour 0 to 23: `{ hour, total }` |
+| `byCategory` | Event counts for `accounts`, `content`, `files`, `playback` |
+| `byOperation` | Content changes by kind: `created` (added or created), `edited` (edited, renamed, cover set), `moved` (reordered), `deleted`, `restored`, `purged` |
+| `byAction` | The 15 most common actions: `{ action, label, count }` |
+| `topPeople` | Up to 10 people by number of events: `{ id, name, label, role, count, lastActiveAt }` |
+| `bySource` | Events by source (`portal`, `mobile`, and so on) |
+| `security` | `byAction` for failed sign-ins, refresh-token reuse, role changes and deactivations (only those that happened), and `failedSignInAddresses` (top 5 IPs by failed sign-ins) |
+
+Playback events are counted here (unlike the list's default "Changes only" view); `byCategory.playback` shows how many.
+
+## `GET /api/audit/report.csv`
+
+The same numbers as a downloadable, sectioned CSV (UTF-8 with a BOM, formula-neutralized like the export). Same `from` and `to` rules. Admin only, limited to 10 a minute. Each download records an `audit.exported` entry with `metadata.report = "summary"`, the period and the event count.
 
 ## Logging the use of the log
 

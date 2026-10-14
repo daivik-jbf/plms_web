@@ -8,8 +8,8 @@ import { type CoverStartInput, coverStartSchema, orderSchema } from '../media/me
 import {
   type CreateCourseInput,
   createCourseSchema,
-  type LessonInput,
-  lessonBodySchema,
+  type CreateLessonInput,
+  createLessonSchema,
   type UpdateCourseInput,
   updateCourseSchema,
 } from './courses.schemas';
@@ -84,7 +84,7 @@ export class CoursesController {
   addLesson(
     @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body(new ZodPipe(lessonBodySchema)) body: LessonInput,
+    @Body(new ZodPipe(createLessonSchema)) body: CreateLessonInput,
   ): Promise<CourseTree> {
     return this.lessons.add(actor, id, body);
   }

@@ -261,7 +261,6 @@ describe('CoursePage', () => {
     expect(await screen.findByText('Course not found')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to Courses' })).toHaveAttribute('href', '/courses');
   });
-
   describe('editing the course', () => {
     it('starts from the current text and sends only what changed', async () => {
       const calls = startServer();
@@ -274,6 +273,7 @@ describe('CoursePage', () => {
       await userEvent.clear(title);
       await userEvent.type(title, '  Fire and exits ');
       await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit course' })).toBeNull());
       expect(calls.find((call) => call.key === 'PATCH /api/courses/c1')?.body).toEqual({ title: 'Fire and exits' });
       expect(await screen.findByRole('heading', { level: 1, name: 'Fire and exits' })).toBeInTheDocument();
@@ -285,6 +285,7 @@ describe('CoursePage', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Edit course' }));
       await userEvent.clear(screen.getByLabelText('Description'));
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit course' })).toBeNull());
       expect(calls.find((call) => call.key === 'PATCH /api/courses/c1')?.body).toEqual({ description: '' });
     });
@@ -311,6 +312,7 @@ describe('CoursePage', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Edit course' }));
       await userEvent.upload(screen.getByLabelText('Cover image'), new File(['x'], 'cover.png', { type: 'image/png' }));
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit course' })).toBeNull());
       expect(calls.map((call) => call.key).filter((key) => /cover|storage/.test(key))).toEqual([
         'POST /api/courses/c1/cover',
@@ -329,6 +331,7 @@ describe('CoursePage', () => {
       await userEvent.type(title, 'Fire and exits');
       await userEvent.upload(screen.getByLabelText('Cover image'), new File(['x'], 'cover.png', { type: 'image/png' }));
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       expect(await screen.findByText(/Your changes were saved, but the cover image could not be added/)).toBeInTheDocument();
       expect(await screen.findByRole('heading', { level: 1, name: 'Fire and exits' })).toBeInTheDocument();
     });
@@ -341,6 +344,7 @@ describe('CoursePage', () => {
       await userEvent.clear(title);
       await userEvent.type(title, 'Changed');
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       expect(await screen.findByText('Title must be 200 characters or fewer.')).toBeInTheDocument();
       expect(screen.getByRole('dialog', { name: 'Edit course' })).toBeInTheDocument();
     });
@@ -415,18 +419,21 @@ describe('CoursePage: building the course', () => {
     expect(await screen.findByText('Lesson "Slow" added.')).toBeInTheDocument();
   });
 
-  it('renames a lesson, starting from its current title', async () => {
+  it('edits a lesson, starting from its current title and description', async () => {
     const calls = startServer();
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Rename lesson Equipment' }));
-    const dialog = screen.getByRole('dialog', { name: 'Rename lesson' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit lesson Equipment' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit lesson' });
     const field = within(dialog).getByLabelText('Lesson title');
     expect(field).toHaveValue('Equipment');
+    expect(within(dialog).getByLabelText('Cover image')).toBeInTheDocument();
     await userEvent.clear(field);
     await userEvent.type(field, 'Kit');
+    await userEvent.type(within(dialog).getByLabelText('Description'), 'What to carry');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText('Lesson renamed to "Kit".')).toBeInTheDocument();
-    expect(calls.find((call) => call.key === 'PATCH /api/lessons/l2')?.body).toEqual({ title: 'Kit' });
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+    expect(await screen.findByText('Lesson saved.')).toBeInTheDocument();
+    expect(calls.find((call) => call.key === 'PATCH /api/lessons/l2')?.body).toEqual({ title: 'Kit', description: 'What to carry' });
     expect(screen.getByRole('treeitem', { name: 'Kit' })).toBeInTheDocument();
   });
 
@@ -465,6 +472,7 @@ describe('CoursePage: building the course', () => {
     await userEvent.clear(field);
     await userEvent.type(field, 'Exit routes');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
     expect(await screen.findByText('Topic saved.')).toBeInTheDocument();
     expect(calls.find((call) => call.key === 'PATCH /api/topics/t1')?.body).toEqual({ title: 'Exit routes' });
     expect(await screen.findByRole('heading', { level: 2, name: 'Exit routes' })).toBeInTheDocument();
@@ -482,6 +490,7 @@ describe('CoursePage: building the course', () => {
     await userEvent.clear(within(dialog).getByLabelText('Description'));
     await userEvent.type(within(dialog).getByLabelText('Description'), 'New text');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
     expect(await screen.findByText('Topic saved.')).toBeInTheDocument();
     expect(calls.find((call) => call.key === 'PATCH /api/topics/t2')?.body).toEqual({ description: 'New text' });
     expect(calls.some((call) => call.key === 'PATCH /api/topics/t1')).toBe(false);
@@ -528,6 +537,7 @@ describe('CoursePage: building the course', () => {
       await userEvent.clear(text);
       await userEvent.type(text, '  New text ');
       await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit topic' })).toBeNull());
       expect(calls.find((call) => call.key === 'PATCH /api/topics/t1')?.body).toEqual({ description: 'New text' });
       expect(await screen.findByText('New text')).toBeInTheDocument();
@@ -537,12 +547,15 @@ describe('CoursePage: building the course', () => {
       const calls = startServer();
       renderPage('/courses/c1?topic=t1');
       await userEvent.click(await screen.findByRole('button', { name: 'Edit topic' }));
-      await userEvent.click(within(screen.getByRole('dialog', { name: 'Edit topic' })).getByRole('button', { name: 'Save' }));
+      const untouched = screen.getByRole('dialog', { name: 'Edit topic' });
+      expect(within(untouched).getByRole('button', { name: 'Save' })).toBeDisabled();
+      await userEvent.click(within(untouched).getByRole('button', { name: 'Cancel' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit topic' })).toBeNull());
       expect(calls.some((call) => call.key === 'PATCH /api/topics/t1')).toBe(false);
       await userEvent.click(screen.getByRole('button', { name: 'Edit topic' }));
       await userEvent.clear(screen.getByLabelText('Description'));
       await userEvent.click(within(screen.getByRole('dialog', { name: 'Edit topic' })).getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       await waitFor(() => expect(calls.find((call) => call.key === 'PATCH /api/topics/t1')?.body).toEqual({ description: '' }));
     });
 
@@ -555,6 +568,7 @@ describe('CoursePage: building the course', () => {
       expect(await screen.findByText('Enter a topic title.')).toBeInTheDocument();
       await userEvent.type(screen.getByLabelText('Topic title'), 'Fire exits again');
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       expect(await screen.findByText('Description must be 10,000 characters or fewer.')).toBeInTheDocument();
       expect(screen.getByRole('dialog', { name: 'Edit topic' })).toBeInTheDocument();
     });

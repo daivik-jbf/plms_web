@@ -25,11 +25,21 @@ describe('media audit presentation', () => {
       'Anita renamed the folder from Safty to Safety',
     ],
     ['content.folder.renamed', { targetLabel: 'Safety' }, 'Folder renamed', 'change', 'content', 'Anita renamed the folder Safety'],
+    ['content.folder.deleted', { targetLabel: 'Safety' }, 'Folder deleted', 'danger', 'content', 'Anita deleted the video folder Safety'],
+    [
+      'content.folder.deleted',
+      { targetLabel: 'Safety', metadata: { category: 'song', itemCount: 3 } },
+      'Folder deleted',
+      'danger',
+      'content',
+      'Anita deleted the song folder Safety for good, with its 3 songs',
+    ],
     ['content.folder.reordered', {}, 'Folders reordered', 'neutral', 'content', 'Anita changed the order of the video folders'],
     ['content.video.added', { targetLabel: 'Fire exits' }, 'Item added', 'change', 'content', 'Anita added the video Fire exits'],
     ['content.video.edited', { targetLabel: 'Fire exits' }, 'Item edited', 'change', 'content', 'Anita edited the video Fire exits'],
     ['content.video.reordered', { targetLabel: 'Safety' }, 'Items reordered', 'neutral', 'content', 'Anita changed the order of the videos in Safety'],
     ['content.video.cover_set', { targetLabel: 'Fire exits' }, 'Cover set', 'change', 'content', 'Anita set the cover image of the video Fire exits'],
+    ['content.video.deleted', { targetLabel: 'Fire exits' }, 'Item deleted', 'danger', 'content', 'Anita deleted the video Fire exits for good'],
     ['file.upload_started', { targetLabel: 'Fire exits' }, 'Upload started', 'neutral', 'files', 'Anita started uploading Fire exits'],
     ['file.upload_completed', { targetLabel: 'Fire exits' }, 'Upload finished', 'success', 'files', 'Anita finished uploading Fire exits'],
     [
@@ -91,8 +101,8 @@ describe('media audit presentation', () => {
 
   it('files the media actions under the right categories', () => {
     const media = AUDIT_ACTIONS.filter((action) => /^(content\.(folder|video)|file\.upload|playback\.)/.test(action));
-    expect(media).toHaveLength(13);
-    expect(media.filter((action) => categoryOf(action) === 'content')).toHaveLength(7);
+    expect(media).toHaveLength(15);
+    expect(media.filter((action) => categoryOf(action) === 'content')).toHaveLength(9);
     expect(media.filter((action) => categoryOf(action) === 'files')).toHaveLength(4);
     expect(media.filter((action) => categoryOf(action) === 'playback')).toEqual(['playback.played', 'playback.viewed']);
   });

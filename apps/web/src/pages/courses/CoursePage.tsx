@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, describeError } from '../../api/client';
-import { addLesson, addTopic, type CourseTree, deleteLesson, deleteTopic, getCourse, getTopic, type LessonNode, renameLesson, reorderLessons, reorderTopics, type TopicSummary, type TopicView, uploadLessonCover } from '../../api/courses';
+import { addLessonWithCover, addTopicWithCover, type CourseTree, deleteLesson, deleteTopic, getCourse, getTopic, type LessonNode, reorderLessons, reorderTopics, type TopicSummary, type TopicView } from '../../api/courses';
 import { useAuth } from '../../auth/AuthContext';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
@@ -13,11 +13,11 @@ import media from '../media/Media.module.css';
 import hub from './CoursesHub.module.css';
 import styles from './Courses.module.css';
 import { CourseOutline } from './CourseOutline';
+import { AddLessonDialog } from './AddLessonDialog';
 import { AddTopicDialog } from './AddTopicDialog';
-import { CoverDialog } from './CoverDialog';
 import { EditCourseDialog } from './EditCourseDialog';
+import { EditLessonDialog } from './EditLessonDialog';
 import { EditTopicDialog } from './EditTopicDialog';
-import { TitleDialog } from './TitleDialog';
 import { plural } from './CourseDetail';
 import { TopicPanel } from './TopicPanel';
 
@@ -25,7 +25,6 @@ type Notice = { tone: 'error' | 'success'; text: string };
 
 type TitleMode =
   | { kind: 'add-lesson' }
-  | { kind: 'rename-lesson'; lesson: LessonNode }
   | { kind: 'add-topic'; lesson: LessonNode };
 
 // The key gives every course its own page state when moving from one to another.
@@ -41,7 +40,7 @@ function Course({ courseId }: { courseId: string }) {
   const [missing, setMissing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [coverOf, setCoverOf] = useState<LessonNode | null>(null);
+  const [editingLesson, setEditingLesson] = useState<LessonNode | null>(null);
   const [editingTopic, setEditingTopic] = useState<TopicView | null>(null);
   const [titleMode, setTitleMode] = useState<TitleMode | null>(null);
   const [busy, setBusy] = useState(false);
@@ -134,20 +133,29 @@ function Course({ courseId }: { courseId: string }) {
   }
 
   // Sends a title from the dialog; the dialog explains a failure, and closes when this resolves.
-  const sendTitle = async (mode: TitleMode, title: string, description = ''): Promise<void> => {
+  const sendTitle = async (mode: TitleMode, title: string, description = '', cover: File | null = null): Promise<void> => {
     switch (mode.kind) {
       case 'add-lesson':
-        setTree(await addLesson(tree.id, title));
-        setNotice({ tone: 'success', text: `Lesson "${title}" added.` });
+      {
+        const added = await addLessonWithCover(tree, title, description, cover);
+        setTree(added.tree);
+        setNotice(
+          added.coverFailure
+            ? { tone: 'error', text: `Lesson "${title}" was added, but the cover image could not be added: ${describeError(added.coverFailure)}` }
+            : { tone: 'success', text: `Lesson "${title}" added.` },
+        );
         break;
-      case 'rename-lesson':
-        setTree(await renameLesson(mode.lesson.id, title));
-        setNotice({ tone: 'success', text: `Lesson renamed to "${title}".` });
+      }
+      case 'add-topic': {
+        const added = await addTopicWithCover(tree, mode.lesson.id, title, description, cover);
+        setTree(added.tree);
+        setNotice(
+          added.coverFailure
+            ? { tone: 'error', text: `Topic "${title}" was added, but the cover image could not be added: ${describeError(added.coverFailure)}` }
+            : { tone: 'success', text: `Topic "${title}" added.` },
+        );
         break;
-      case 'add-topic':
-        setTree(await addTopic(mode.lesson.id, title, description));
-        setNotice({ tone: 'success', text: `Topic "${title}" added.` });
-        break;
+      }
     }
   };
 
@@ -183,14 +191,6 @@ function Course({ courseId }: { courseId: string }) {
       setBusy(false);
     }
   }
-
-  const dialog = titleMode
-    ? {
-        'add-lesson': { heading: 'Add lesson', label: 'Lesson title', initial: '', submitLabel: 'Add lesson', emptyMessage: 'Enter a lesson title.' },
-        'rename-lesson': { heading: 'Rename lesson', label: 'Lesson title', initial: titleMode.kind === 'rename-lesson' ? titleMode.lesson.title : '', submitLabel: 'Save', emptyMessage: 'Enter a lesson title.' },
-        'add-topic': { heading: 'Add topic', label: 'Topic title', initial: '', submitLabel: 'Add topic', emptyMessage: 'Enter a topic title.' },
-      }[titleMode.kind]
-    : null;
 
   return (
     <>
@@ -249,9 +249,8 @@ function Course({ courseId }: { courseId: string }) {
               busy={busy}
               onSelectTopic={(id) => setParams({ topic: id })}
               onAddTopic={(lesson) => setTitleMode({ kind: 'add-topic', lesson })}
-              onRenameLesson={(lesson) => setTitleMode({ kind: 'rename-lesson', lesson })}
+              onEditLesson={(lesson) => setEditingLesson(lesson)}
               onEditTopic={(topic) => void editTopic(topic)}
-              onCoverLesson={(lesson) => setCoverOf(lesson)}
               onDeleteLesson={isAdmin ? (lesson) => setRemoving({ kind: 'lesson', lesson }) : undefined}
               onDeleteTopic={isAdmin ? (topic) => setRemoving({ kind: 'topic', topic }) : undefined}
               onMoveLesson={(lesson, delta) =>
@@ -309,16 +308,12 @@ function Course({ courseId }: { courseId: string }) {
           setReloadKey((key) => key + 1);
         }}
       />
-      <CoverDialog
-        open={coverOf !== null}
-        title="Lesson cover"
-        subject={coverOf?.title ?? ''}
-        currentUrl={coverOf?.coverUrl ?? null}
-        onClose={() => setCoverOf(null)}
-        onSave={async (file) => {
-          if (!coverOf) return;
-          setTree(await uploadLessonCover(coverOf.id, file));
-          setNotice({ tone: 'success', text: `Cover of the lesson "${coverOf.title}" saved.` });
+      <EditLessonDialog
+        lesson={editingLesson}
+        onClose={() => setEditingLesson(null)}
+        onSaved={(saved) => {
+          setTree(saved);
+          setNotice({ tone: 'success', text: 'Lesson saved.' });
         }}
       />
       <ConfirmDialog
@@ -343,17 +338,12 @@ function Course({ courseId }: { courseId: string }) {
       <EditCourseDialog course={editing ? tree : null} onClose={() => setEditing(false)} onChanged={() => void load()} />
       <AddTopicDialog
         open={titleMode?.kind === 'add-topic'}
-        onSubmit={(title, description) => (titleMode ? sendTitle(titleMode, title, description) : Promise.resolve())}
+        onSubmit={(title, description, cover) => (titleMode ? sendTitle(titleMode, title, description, cover) : Promise.resolve())}
         onClose={() => setTitleMode(null)}
       />
-      <TitleDialog
-        open={titleMode !== null && titleMode.kind !== 'add-topic'}
-        heading={dialog?.heading ?? ''}
-        label={dialog?.label ?? ''}
-        initial={dialog?.initial ?? ''}
-        submitLabel={dialog?.submitLabel ?? ''}
-        emptyMessage={dialog?.emptyMessage ?? ''}
-        onSubmit={(title) => (titleMode ? sendTitle(titleMode, title) : Promise.resolve())}
+      <AddLessonDialog
+        open={titleMode?.kind === 'add-lesson'}
+        onSubmit={(title, description, cover) => (titleMode ? sendTitle(titleMode, title, description, cover) : Promise.resolve())}
         onClose={() => setTitleMode(null)}
       />
     </>

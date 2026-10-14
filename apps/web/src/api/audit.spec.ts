@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { auditQueryString, filtersFromParams, filtersToParams } from './audit';
+import { auditQueryString, filtersFromParams, filtersToParams, periodQuery } from './audit';
 
 describe('audit filters', () => {
   it('round-trips through URL parameters and drops empty values', () => {
@@ -39,5 +39,13 @@ describe('audit filters', () => {
 
   it('returns an empty string when there is nothing to send', () => {
     expect(auditQueryString({})).toBe('');
+  });
+});
+
+describe('analytics period', () => {
+  it('asks for the last N days up to now', () => {
+    const query = new URLSearchParams(periodQuery(7, new Date('2026-10-13T12:00:00.000Z')).slice(1));
+    expect(query.get('to')).toBe('2026-10-13T12:00:00.000Z');
+    expect(query.get('from')).toBe('2026-10-06T12:00:00.000Z');
   });
 });

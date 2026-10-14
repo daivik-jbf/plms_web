@@ -150,6 +150,7 @@ describe('StaffPage', () => {
       expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
       await userEvent.selectOptions(within(dialog).getByLabelText('Role'), 'admin');
       await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Change role' })).not.toBeInTheDocument());
       expect(server.calls.find((c) => c.method === 'PATCH')).toMatchObject({ url: '/api/users/staff-1/role', body: { role: 'admin' } });
       const ben = within(screen.getByRole('table', { name: 'People' })).getByRole('row', { name: /Ben Okoye/ });
@@ -163,6 +164,7 @@ describe('StaffPage', () => {
       const dialog = screen.getByRole('dialog', { name: 'Change role' });
       await userEvent.selectOptions(within(dialog).getByLabelText('Role'), 'admin');
       await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('At least one active Admin is required.');
       expect(screen.getByRole('dialog', { name: 'Change role' })).toBeInTheDocument();
     });

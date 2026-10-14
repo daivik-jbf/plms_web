@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, describeError } from '../../api/client';
-import { type Folder, listFolders, listItems, type MediaItem, playItem, reorderItems } from '../../api/media';
+import { deleteItem, type Folder, listFolders, listItems, type MediaItem, playItem, reorderItems } from '../../api/media';
+import { useAuth } from '../../auth/AuthContext';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Icon } from '../../components/Icon';
 import { plural } from '../../lib/format';
 import hub from '../courses/CoursesHub.module.css';
@@ -35,6 +37,10 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [uploading, setUploading] = useState(false);
+  const { state: auth } = useAuth();
+  const isAdmin = auth.status === 'authenticated' && auth.user.role === 'admin';
+  const [removing, setRemoving] = useState<MediaItem | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -74,6 +80,22 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
     } catch (error) {
       setNotice({ tone: 'error', text: describeError(error) });
       await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmRemove() {
+    if (!removing) return;
+    setBusy(true);
+    setRemoveError(null);
+    try {
+      await deleteItem(removing.id);
+      setNotice({ tone: 'success', text: `${category.nounTitle} "${removing.title}" deleted.` });
+      setRemoving(null);
+      await load();
+    } catch (error) {
+      setRemoveError(describeError(error));
     } finally {
       setBusy(false);
     }
@@ -155,6 +177,14 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
           onPlay={onPlay}
           onEdit={setEditing}
           onMove={(item, delta) => void move(item, delta)}
+          onDelete={
+            isAdmin
+              ? (item) => {
+                  setRemoveError(null);
+                  setRemoving(item);
+                }
+              : undefined
+          }
         />
       )}
 
@@ -167,6 +197,18 @@ export function FolderPage({ category }: { category: CategoryConfig }) {
         onChanged={() => void load()}
       />
 
+      <ConfirmDialog
+        open={removing !== null}
+        title={`Delete ${category.noun}`}
+        confirmLabel="Delete for good"
+        tone="danger"
+        busy={busy}
+        error={removeError}
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => setRemoving(null)}
+      >
+        {removing ? `Delete the ${category.noun} "${removing.title}" for good? Its file and cover are removed and this cannot be undone.` : ''}
+      </ConfirmDialog>
       <PlayerDialog video={playing} onClose={() => setPlaying(null)} />
       <UploadDialog open={uploading} category={category} folderId={folderId} onClose={() => setUploading(false)} onStarted={() => void load()} />
       <EditItemDialog

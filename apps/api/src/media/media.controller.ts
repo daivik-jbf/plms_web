@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import type { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { Roles } from '../auth/roles.decorator';
 import { ZodPipe } from '../common/zod.pipe';
 import { CategoryPipe } from './category.pipe';
 import { CoversService } from './covers.service';
@@ -33,15 +34,6 @@ export class MediaController {
     return this.folders.create(actor, category, body.name);
   }
 
-  @Put(':category/folders/order')
-  reorderFolders(
-    @CurrentUser() actor: AuthUser,
-    @Param('category', CategoryPipe) category: MediaCategory,
-    @Body(new ZodPipe(orderSchema)) body: z.infer<typeof orderSchema>,
-  ): Promise<FolderView[]> {
-    return this.folders.reorder(actor, category, body.ids);
-  }
-
   @Patch('folders/:id')
   renameFolder(
     @CurrentUser() actor: AuthUser,
@@ -49,6 +41,13 @@ export class MediaController {
     @Body(new ZodPipe(folderBodySchema)) body: z.infer<typeof folderBodySchema>,
   ): Promise<FolderView> {
     return this.folders.rename(actor, id, body.name);
+  }
+
+  // Anyone signed in may do it, and it is for good: the folder, every item in it and their files and covers are removed.
+  @Delete('folders/:id')
+  @HttpCode(204)
+  removeFolder(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.folders.remove(actor, id);
   }
 
   @Get('folders/:id/items')
@@ -72,6 +71,14 @@ export class MediaController {
     @Body(new ZodPipe(updateItemSchema)) body: UpdateItemInput,
   ): Promise<ItemView> {
     return this.items.update(actor, id, body);
+  }
+
+  // Admins only, and for good: the item, its file and its cover are removed. An item a course still uses cannot go.
+  @Delete('items/:id')
+  @Roles('admin')
+  @HttpCode(204)
+  removeItem(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.items.remove(actor, id);
   }
 
   @Post('items/:id/cover')

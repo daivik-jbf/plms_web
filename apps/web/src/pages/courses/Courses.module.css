@@ -45,16 +45,51 @@
 
 .tree,
 .group {
-  padding: 0 0 0 var(--space-6);
+  margin: 0;
+  padding: 0;
 }
 
+/* The branches of the tree: a line runs down the left of every group, and a short one leads from it to each item. */
 .group {
-  padding-left: var(--space-4);
+  --branch: 1.1rem;
+  margin-left: 1.25rem;
+  padding-left: var(--branch);
 }
 
 .item {
+  --row-mid: 1.45rem;
+  position: relative;
   list-style: none;
   outline: none;
+}
+
+.leaf {
+  --row-mid: 1.2rem;
+}
+
+.group > .item::before,
+.group > .item::after {
+  position: absolute;
+  left: calc(-1 * var(--branch));
+  content: '';
+  pointer-events: none;
+}
+
+.group > .item::before {
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--color-border);
+}
+
+.group > .item:last-child::before {
+  bottom: auto;
+  height: var(--row-mid);
+}
+
+.group > .item::after {
+  top: var(--row-mid);
+  width: calc(var(--branch) - 0.25rem);
+  border-top: 1px solid var(--color-border);
 }
 
 /* The title has the whole first line, so it is never squeezed; the buttons sit on the line under it. */
@@ -147,6 +182,24 @@
 
 .twistyOpen {
   transform: rotate(90deg);
+}
+
+/* Keeps the titles of the topics that cannot be opened in line with those that can. */
+.twistySpace {
+  display: inline-block;
+  width: 16px;
+  margin-right: var(--space-1);
+}
+
+.fileLabel {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.fileIcon {
+  display: inline-flex;
+  margin-right: var(--space-2);
+  vertical-align: middle;
 }
 
 .addTopic {
@@ -250,21 +303,6 @@
   flex: none;
   width: 4rem;
   height: 4rem;
-  border-radius: 12px;
-  object-fit: cover;
-}
-
-.coverSubject {
-  margin: 0 0 var(--space-3);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.coverPreview {
-  display: block;
-  width: 100%;
-  max-height: 12rem;
-  margin-bottom: var(--space-4);
   border-radius: 12px;
   object-fit: cover;
 }

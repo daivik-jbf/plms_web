@@ -17,10 +17,12 @@ interface ItemsListProps {
   onPlay: (item: MediaItem) => void;
   onEdit: (item: MediaItem) => void;
   onMove: (item: MediaItem, delta: -1 | 1) => void;
+  // Given only to Admins: the delete button appears on a card when its handler is given.
+  onDelete?: (item: MediaItem) => void;
 }
 
 // The items of a folder, one card each: the cover, the title, what it is, and the buttons that act on it.
-export function ItemsList({ category, items, busy, progress, onPlay, onEdit, onMove }: ItemsListProps) {
+export function ItemsList({ category, items, busy, progress, onPlay, onEdit, onMove, onDelete }: ItemsListProps) {
   // Only ready items can be ordered; an item that is still uploading keeps its place until it finishes.
   const ready = items.filter((item) => item.status === 'ready');
   // Video cards open the pop-up from the title or anywhere on the card. Audio cards have a Play button for the docked
@@ -78,6 +80,11 @@ export function ItemsList({ category, items, busy, progress, onPlay, onEdit, onM
                 <MoveButton className={hub.square} moveKey={`${item.id}:down`} label={`Move ${item.title} down`} unavailable={busy || readyIndex === ready.length - 1} onMove={() => onMove(item, 1)}>
                   <Icon name="down" size={16} />
                 </MoveButton>
+                {onDelete ? (
+                  <Button variant="secondary" size="small" className={hub.square} disabled={busy} aria-label={`Delete ${item.title}`} title="Delete" onClick={() => onDelete(item)}>
+                    <Icon name="trash" size={16} />
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </li>

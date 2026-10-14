@@ -4,13 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CategorySlug, Folder } from '../../api/media';
 import { CATEGORIES } from '../../media/categories';
 import type { MockResponse } from '../../test/fetch-mock';
+import { makeFolder } from '../../test/folders';
 import { mockSession, renderWithSession, STAFF } from '../../test/session';
 import { CategoryPage } from './CategoryPage';
 
 const fixture: Folder[] = [
-  { id: 'f1', name: 'Safety Training', position: 0, itemCount: 4, category: 'video' },
-  { id: 'f2', name: 'Kitchen', position: 1, itemCount: 0, category: 'video' },
-  { id: 'f3', name: '<img src=x onerror=alert(1)>', position: 2, itemCount: 1, category: 'video' },
+  makeFolder({ id: 'f1', name: 'Safety Training', position: 0, itemCount: 4, sizeBytes: 1_572_864 }),
+  makeFolder({ id: 'f2', name: 'Kitchen', position: 1, itemCount: 0 }),
+  makeFolder({ id: 'f3', name: '<img src=x onerror=alert(1)>', position: 2, itemCount: 1 }),
 ];
 
 type Override = MockResponse | ((body: Record<string, unknown>) => MockResponse);
@@ -31,7 +32,7 @@ function startServer(overrides: Record<string, Override> = {}, initial: Folder[]
     if (override) return typeof override === 'function' ? override(body) : override;
     if (key === `GET ${base}`) return { body: state.folders };
     if (key === `POST ${base}`) {
-      const folder: Folder = { id: 'f-new', name: String(body.name), position: state.folders.length, itemCount: 0, category: initial[0]?.category ?? 'video' };
+      const folder = makeFolder({ id: 'f-new', name: String(body.name), position: state.folders.length, category: initial[0]?.category ?? 'video' });
       state.folders.push(folder);
       return { status: 201, body: folder };
     }
@@ -41,10 +42,10 @@ function startServer(overrides: Record<string, Override> = {}, initial: Folder[]
       folder.name = String(body.name);
       return { body: folder };
     }
-    if (key === `PUT ${base}/order`) {
-      const ids = body.ids as string[];
-      state.folders = ids.map((id, index) => ({ ...state.folders.find((folder) => folder.id === id)!, position: index }));
-      return { body: state.folders };
+    const remove = /^DELETE \/api\/media\/folders\/([^/]+)$/.exec(key);
+    if (remove) {
+      state.folders = state.folders.filter((folder) => folder.id !== remove[1]);
+      return { status: 204, body: null };
     }
     return { status: 404, body: {} };
   });
@@ -130,34 +131,44 @@ describe('CategoryPage', () => {
     await userEvent.clear(field);
     await userEvent.type(field, 'Canteen');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
     expect(await screen.findByText('Folder renamed to "Canteen".')).toBeInTheDocument();
     expect(calls.find((call) => call.key === 'PATCH /api/media/folders/f2')?.body).toEqual({ name: 'Canteen' });
   });
 
-  it('moves a folder down and disables the moves that are not possible', async () => {
-    const calls = startServer();
+  it('has no way to reorder the folders', async () => {
+    startServer();
     renderWithSession(<CategoryPage category={VIDEOS} />);
     await screen.findByRole('list', { name: 'Video folders' });
-    expect(screen.getByRole('button', { name: 'Move Safety Training up' })).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('button', { name: 'Move <img src=x onerror=alert(1)> down' })).toHaveAttribute('aria-disabled', 'true');
-    await userEvent.click(screen.getByRole('button', { name: 'Move Safety Training down' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Safety Training up' })).not.toHaveAttribute('aria-disabled'));
-    expect(calls.find((call) => call.key === 'PUT /api/media/videos/folders/order')?.body).toEqual({ ids: ['f2', 'f1', 'f3'] });
-    const rows = within(screen.getByRole('list', { name: 'Video folders' })).getAllByRole('listitem');
-    expect(within(rows[0] as HTMLElement).getByRole('link', { name: 'Open Kitchen' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument();
   });
 
-  it('reloads and says so when the order changed under you', async () => {
-    startServer({ 'PUT /api/media/videos/folders/order': { status: 409, body: { message: 'The list changed while you were editing it. Reload and try again.' } } });
+  it('shows what is in each folder: its size, when it was made and last changed, and by whom', async () => {
+    const folders = [
+      makeFolder({
+        id: 'f1',
+        name: 'Safety Training',
+        itemCount: 4,
+        sizeBytes: 1_572_864,
+        createdAt: '2026-10-12T09:30:00.000Z',
+        createdBy: { id: 'u1', name: 'Anita' },
+        updatedAt: '2026-10-13T14:05:00.000Z',
+        updatedBy: { id: 'u2', name: 'Ravi' },
+      }),
+    ];
+    startServer({}, folders);
     renderWithSession(<CategoryPage category={VIDEOS} />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Move Safety Training down' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('The list changed');
+    const row = (await screen.findAllByRole('listitem'))[0] as HTMLElement;
+    expect(within(row).getByText('4 videos')).toBeInTheDocument();
+    expect(within(row).getByText('1.5 MB')).toBeInTheDocument();
+    expect(within(row).getByText('Created').nextSibling).toHaveTextContent(/2026.*by Anita$/);
+    expect(within(row).getByText('Updated').nextSibling).toHaveTextContent(/2026.*by Ravi$/);
   });
 
   it('shows a Songs page with its own words, links and endpoints', async () => {
     const songs: Folder[] = [
-      { id: 's1', name: 'Road trip', position: 0, itemCount: 2, category: 'song' },
-      { id: 's2', name: 'Calm', position: 1, itemCount: 0, category: 'song' },
+      makeFolder({ id: 's1', name: 'Road trip', position: 0, itemCount: 2, category: 'song' }),
+      makeFolder({ id: 's2', name: 'Calm', position: 1, itemCount: 0, category: 'song' }),
     ];
     const calls = startServer({}, songs, 'songs');
     renderWithSession(<CategoryPage category={SONGS} />);
@@ -165,8 +176,6 @@ describe('CategoryPage', () => {
     const list = screen.getByRole('list', { name: 'Song folders' });
     expect(within(list).getByText('2 songs')).toBeInTheDocument();
     expect(within(list).getByRole('link', { name: 'Open Road trip' })).toHaveAttribute('href', '/songs/s1');
-    await userEvent.click(screen.getByRole('button', { name: 'Move Road trip down' }));
-    await waitFor(() => expect(calls.find((call) => call.key === 'PUT /api/media/songs/folders/order')?.body).toEqual({ ids: ['s2', 's1'] }));
     await userEvent.click(screen.getByRole('button', { name: 'New folder' }));
     await userEvent.type(screen.getByLabelText('Folder name'), 'Party');
     await userEvent.click(screen.getByRole('button', { name: 'Create folder' }));
@@ -180,5 +189,56 @@ describe('CategoryPage', () => {
     renderWithSession(<CategoryPage category={PODCASTS} />);
     expect(await screen.findByText('No folders yet')).toBeInTheDocument();
     expect(screen.getByText('Create a folder to start adding podcasts.')).toBeInTheDocument();
+  });
+  describe('deleting a folder', () => {
+    it('has a Delete button on every folder, named after it', async () => {
+      startServer();
+      renderWithSession(<CategoryPage category={VIDEOS} />);
+      expect(await screen.findByRole('button', { name: 'Delete Safety Training' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete Kitchen' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /^Delete / })).toHaveLength(3);
+    });
+
+    it('asks first, naming what goes with the folder, and sends nothing until it is confirmed', async () => {
+      const calls = startServer();
+      renderWithSession(<CategoryPage category={VIDEOS} />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Delete Safety Training' }));
+      const dialog = screen.getByRole('dialog', { name: 'Delete folder' });
+      expect(dialog).toHaveTextContent('Delete the folder "Safety Training" for good? Its 4 videos, with their files and covers, are removed too, and this cannot be undone.');
+      expect(calls.some((call) => call.key.startsWith('DELETE'))).toBe(false);
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(calls.some((call) => call.key.startsWith('DELETE'))).toBe(false);
+    });
+
+    it('deletes the folder when confirmed, says so, and takes it off the list', async () => {
+      const calls = startServer();
+      renderWithSession(<CategoryPage category={VIDEOS} />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Delete Kitchen' }));
+      const dialog = screen.getByRole('dialog', { name: 'Delete folder' });
+      expect(dialog).toHaveTextContent('Delete the folder "Kitchen" for good? This cannot be undone.');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Delete for good' }));
+      expect(await screen.findByText('Folder "Kitchen" deleted.')).toBeInTheDocument();
+      expect(calls.some((call) => call.key === 'DELETE /api/media/folders/f2')).toBe(true);
+      await waitFor(() => expect(screen.queryByRole('link', { name: 'Open Kitchen' })).toBeNull());
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('says what the server says inside the dialog when the folder cannot go, and keeps it', async () => {
+      startServer({ 'DELETE /api/media/folders/f1': { status: 409, body: { message: 'An item in this folder is used in course topics. Remove it from the courses first.' } } });
+      renderWithSession(<CategoryPage category={VIDEOS} />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Delete Safety Training' }));
+      const dialog = screen.getByRole('dialog', { name: 'Delete folder' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Delete for good' }));
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('used in course topics');
+      expect(screen.getByRole('link', { name: 'Open Safety Training' })).toBeInTheDocument();
+    });
+
+    it('uses the words of the category', async () => {
+      startServer({}, [makeFolder({ id: 's1', name: 'Road trip', itemCount: 1, category: 'song' })], 'songs');
+      renderWithSession(<CategoryPage category={SONGS} />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Delete Road trip' }));
+      expect(screen.getByRole('dialog', { name: 'Delete folder' })).toHaveTextContent('Its 1 song, with its file and cover, is removed too');
+    });
   });
 });

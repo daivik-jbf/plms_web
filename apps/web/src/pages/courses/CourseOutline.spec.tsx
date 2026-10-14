@@ -22,7 +22,7 @@ function setup(selectedTopicId: string | null = null, busy = false) {
   const handlers = {
     onSelectTopic: vi.fn(),
     onAddTopic: vi.fn(),
-    onRenameLesson: vi.fn(),
+    onEditLesson: vi.fn(),
     onEditTopic: vi.fn(),
     onMoveLesson: vi.fn(),
     onMoveTopic: vi.fn(),
@@ -184,7 +184,7 @@ describe('CourseOutline row actions', () => {
         busy={false}
         onSelectTopic={vi.fn()}
         onAddTopic={vi.fn()}
-        onRenameLesson={vi.fn()}
+        onEditLesson={vi.fn()}
         onEditTopic={vi.fn()}
         onMoveLesson={vi.fn()}
         onMoveTopic={vi.fn()}
@@ -198,11 +198,11 @@ describe('CourseOutline row actions', () => {
     expect(onDeleteTopic).toHaveBeenCalledWith(lessons[0]!.topics[1]);
   });
 
-  it('gives a lesson Add topic, Rename and Move up and down, and a topic Rename and Move up and down, each named after its row', () => {
+  it('gives a lesson Add topic, Edit and Move up and down, and a topic Rename and Move up and down, each named after its row', () => {
     setup();
     const lesson = row('Exits');
     expect(lesson.getByRole('button', { name: 'Add a topic to Exits' })).toBeInTheDocument();
-    expect(lesson.getByRole('button', { name: 'Rename lesson Exits' })).toBeInTheDocument();
+    expect(lesson.getByRole('button', { name: 'Edit lesson Exits' })).toBeInTheDocument();
     expect(lesson.getByRole('button', { name: 'Move lesson Exits up' })).toBeInTheDocument();
     expect(lesson.getByRole('button', { name: 'Move lesson Exits down' })).toBeInTheDocument();
     expect(lesson.getByRole('button', { name: 'Edit topic Fire exits' })).toBeInTheDocument();
@@ -241,7 +241,7 @@ describe('CourseOutline row actions', () => {
   });
 
   it('keeps the keyboard on the Move button that was pressed while the row moves', async () => {
-    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onRenameLesson: vi.fn(), onEditTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
+    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onEditLesson: vi.fn(), onEditTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
     const view = render(<CourseOutline lessons={lessons} selectedTopicId={null} busy={false} {...handlers} />);
     const button = screen.getByRole('button', { name: 'Move lesson Exits down' });
     button.focus();
@@ -257,12 +257,12 @@ describe('CourseOutline row actions', () => {
   });
 
   it('does not take the keyboard back from somewhere else it has gone since', async () => {
-    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onRenameLesson: vi.fn(), onEditTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
+    const handlers = { onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onEditLesson: vi.fn(), onEditTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() };
     const view = render(<CourseOutline lessons={lessons} selectedTopicId={null} busy={false} {...handlers} />);
     screen.getByRole('button', { name: 'Move lesson Exits down' }).focus();
     await userEvent.keyboard('{Enter}');
     view.rerender(<CourseOutline lessons={lessons} selectedTopicId={null} busy={true} {...handlers} />);
-    const elsewhere = screen.getByRole('button', { name: 'Rename lesson Empty lesson' });
+    const elsewhere = screen.getByRole('button', { name: 'Edit lesson Empty lesson' });
     elsewhere.focus();
     view.rerender(<CourseOutline lessons={[lessons[1]!, lessons[0]!, lessons[2]!]} selectedTopicId={null} busy={false} {...handlers} />);
     expect(elsewhere).toHaveFocus();
@@ -272,8 +272,8 @@ describe('CourseOutline row actions', () => {
     const handlers = setup();
     await userEvent.click(screen.getByRole('button', { name: 'Add a topic to Exits' }));
     expect(handlers.onAddTopic).toHaveBeenCalledWith(lessons[0]);
-    await userEvent.click(screen.getByRole('button', { name: 'Rename lesson Exits' }));
-    expect(handlers.onRenameLesson).toHaveBeenCalledWith(lessons[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Edit lesson Exits' }));
+    expect(handlers.onEditLesson).toHaveBeenCalledWith(lessons[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Edit topic Alarms' }));
     expect(handlers.onEditTopic).toHaveBeenCalledWith(lessons[0]!.topics[1]);
     await userEvent.click(screen.getByRole('button', { name: 'Move lesson Exits down' }));
@@ -284,7 +284,7 @@ describe('CourseOutline row actions', () => {
 
   it('does not open, close or choose anything when an action is clicked', async () => {
     const handlers = setup();
-    await userEvent.click(screen.getByRole('button', { name: 'Rename lesson Exits' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit lesson Exits' }));
     await userEvent.click(screen.getByRole('button', { name: 'Edit topic Alarms' }));
     expect(screen.getByRole('treeitem', { name: 'Exits' })).toHaveAttribute('aria-expanded', 'true');
     expect(handlers.onSelectTopic).not.toHaveBeenCalled();
@@ -293,7 +293,7 @@ describe('CourseOutline row actions', () => {
   it('puts the buttons of the Tab stop in the tab order and the others out of it', async () => {
     setup();
     const tabbable = () => screen.getAllByRole('button').filter((button) => button.tabIndex === 0).map((button) => button.getAttribute('aria-label'));
-    expect(tabbable()).toEqual(['Add a topic to Exits', 'Rename lesson Exits', 'Move lesson Exits up', 'Move lesson Exits down']);
+    expect(tabbable()).toEqual(['Add a topic to Exits', 'Edit lesson Exits', 'Move lesson Exits up', 'Move lesson Exits down']);
     await userEvent.tab();
     await userEvent.keyboard('{ArrowDown}');
     expect(tabbable()).toEqual(['Edit topic Fire exits', 'Move topic Fire exits up', 'Move topic Fire exits down']);
@@ -308,5 +308,53 @@ describe('CourseOutline row actions', () => {
     expect(document.activeElement).toHaveAttribute('aria-label', 'Add a topic to Exits');
     await userEvent.keyboard('{Enter}');
     expect(screen.getByRole('treeitem', { name: 'Exits' })).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
+describe('CourseOutline files', () => {
+  const withFiles: LessonNode[] = [
+    {
+      id: 'l1',
+      title: 'Frontend',
+      position: 0,
+      topics: [
+        {
+          id: 't1',
+          title: 'HTML',
+          position: 0,
+          attachmentCount: 2,
+          attachments: [
+            { id: 'a1', kind: 'video', title: 'Intro to HTML' },
+            { id: 'a2', kind: 'pdf', title: 'Cheat sheet' },
+          ],
+        },
+        { id: 't2', title: 'CSS', position: 1, attachmentCount: 0 },
+      ],
+    },
+  ];
+  const handlers = () => ({ onSelectTopic: vi.fn(), onAddTopic: vi.fn(), onEditLesson: vi.fn(), onEditTopic: vi.fn(), onMoveLesson: vi.fn(), onMoveTopic: vi.fn() });
+
+  it('lists the files of a topic under it, one level deeper, and opens and closes them', async () => {
+    render(<CourseOutline lessons={withFiles} selectedTopicId={null} busy={false} {...handlers()} />);
+    expect(screen.getAllByRole('treeitem').map((item) => item.getAttribute('aria-label'))).toEqual(['Frontend', 'HTML', 'Intro to HTML', 'Cheat sheet', 'CSS']);
+    expect(screen.getByRole('treeitem', { name: 'Intro to HTML' })).toHaveAttribute('aria-level', '3');
+    expect(screen.getByRole('treeitem', { name: 'HTML' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', { name: 'CSS' })).not.toHaveAttribute('aria-expanded');
+
+    screen.getByRole('treeitem', { name: 'HTML' }).focus();
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(screen.getByRole('treeitem', { name: 'HTML' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('treeitem', { name: 'Intro to HTML' })).toBeNull();
+    await userEvent.keyboard('{ArrowRight}{ArrowRight}');
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Intro to HTML');
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toHaveAttribute('aria-label', 'HTML');
+  });
+
+  it('opens the topic of a file when the file is chosen', async () => {
+    const given = handlers();
+    render(<CourseOutline lessons={withFiles} selectedTopicId={null} busy={false} {...given} />);
+    await userEvent.click(screen.getByText('Cheat sheet'));
+    expect(given.onSelectTopic).toHaveBeenCalledWith('t1');
   });
 });

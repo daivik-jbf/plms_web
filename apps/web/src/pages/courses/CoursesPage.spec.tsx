@@ -241,6 +241,17 @@ describe('CoursesPage', () => {
     expect(await screen.findByText('Course "Slow one" created.')).toBeInTheDocument();
   });
 
+  it('edits the course that is shown from the edit icon in its banner, which has no Rename button', async () => {
+    startServer();
+    renderWithSession(<CoursesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit Fire safety' }));
+    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'More actions for Fire safety' })).toBeNull();
+    const dialog = screen.getByRole('dialog', { name: 'Edit course' });
+    expect(within(dialog).getByLabelText('Course title')).toHaveValue('Fire safety');
+    expect(within(dialog).getByLabelText('Cover image')).toBeInTheDocument();
+  });
+
   it('renames a course from the menu in the list, starting from its current title', async () => {
     const calls = startServer();
     renderWithSession(<CoursesPage />);
@@ -253,6 +264,7 @@ describe('CoursesPage', () => {
     await userEvent.clear(field);
     await userEvent.type(field, 'Emergency care');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
     expect(await screen.findByText('Course renamed to "Emergency care".')).toBeInTheDocument();
     expect(calls.find((call) => call.key === 'PATCH /api/courses/c2')?.body).toEqual({ title: 'Emergency care' });
   });
@@ -297,8 +309,6 @@ describe('CoursesPage', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Actions for Fire safety' }));
       expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
       await userEvent.keyboard('{Escape}');
-      await userEvent.click(await screen.findByRole('button', { name: 'More actions for Fire safety' }));
-      expect(screen.queryByRole('menuitem', { name: 'Delete course' })).toBeNull();
       await screen.findByRole('region', { name: 'Lessons' });
       await userEvent.click(screen.getByRole('button', { name: 'Actions for lesson Extinguishers' }));
       expect(screen.queryByRole('menuitem', { name: 'Delete lesson' })).toBeNull();
@@ -337,15 +347,6 @@ describe('CoursesPage', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Trash' }));
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('Course not found.');
       expect(screen.getByRole('dialog', { name: 'Delete course' })).toBeInTheDocument();
-    });
-
-    it('deletes the course that is shown from the menu in its banner', async () => {
-      const calls = startServer({}, fixture, ADMIN);
-      renderWithSession(<CoursesPage />);
-      await userEvent.click(await screen.findByRole('button', { name: 'More actions for Fire safety' }));
-      await userEvent.click(screen.getByRole('menuitem', { name: 'Delete course' }));
-      await userEvent.click(within(screen.getByRole('dialog', { name: 'Delete course' })).getByRole('button', { name: 'Move to Trash' }));
-      await waitFor(() => expect(calls.some((call) => call.key === 'DELETE /api/courses/c1')).toBe(true));
     });
 
     it('moves a lesson to the Trash and shows the course without it', async () => {
@@ -390,6 +391,7 @@ describe('CoursesPage', () => {
     await userEvent.clear(within(dialog).getByLabelText('Topic title'));
     await userEvent.type(within(dialog).getByLabelText('Topic title'), 'Kinds');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
     expect(await screen.findByText('Topic saved.')).toBeInTheDocument();
     expect(calls.find((call) => call.key === 'PATCH /api/topics/t1')?.body).toEqual({ title: 'Kinds' });
   });
@@ -402,17 +404,16 @@ describe('CoursesPage', () => {
       expect(lessons.querySelector('img')).toHaveAttribute('src', 'https://cdn.example/lesson?sig=1');
     });
 
-    it('changes the cover of a lesson from its menu, in three steps, and shows it', async () => {
+    it('changes the cover of a lesson from its edit dialog, in three steps, and shows it', async () => {
       const calls = startServer();
       renderWithSession(<CoursesPage />);
       await userEvent.click(await screen.findByRole('button', { name: 'Actions for lesson Extinguishers' }));
-      await userEvent.click(screen.getByRole('menuitem', { name: 'Change cover' }));
-      const dialog = screen.getByRole('dialog', { name: 'Lesson cover' });
-      await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-      expect(await within(dialog).findByText('Choose an image.')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Edit lesson' }));
+      const dialog = screen.getByRole('dialog', { name: 'Edit lesson' });
       await userEvent.upload(within(dialog).getByLabelText('Cover image'), new File(['x'], 'cover.png', { type: 'image/png' }));
       await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-      expect(await screen.findByText('Cover of the lesson "Extinguishers" saved.')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+      expect(await screen.findByText('Lesson saved.')).toBeInTheDocument();
       expect(calls.map((call) => call.key)).toEqual(expect.arrayContaining(['POST /api/lessons/l1/cover', 'PUT https://upload.example/cover', 'POST /api/lessons/l1/cover/f9/complete']));
       const lessons = await screen.findByRole('region', { name: 'Lessons' });
       expect(lessons.querySelector('img')).toHaveAttribute('src', 'https://cdn.example/lesson?sig=1');

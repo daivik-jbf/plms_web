@@ -23,7 +23,18 @@ export async function createFolderViaApi(
   session: Session,
   name = uniqueName(),
   slug: CategorySlug = 'videos',
-): Promise<{ id: string; name: string; position: number; itemCount: number; category: string }> {
+): Promise<{
+  id: string;
+  name: string;
+  position: number;
+  itemCount: number;
+  sizeBytes: number;
+  category: string;
+  createdAt: string;
+  createdBy: { id: string; name: string };
+  updatedAt: string;
+  updatedBy: { id: string; name: string };
+}> {
   const res = await request(app.getHttpServer()).post(`/api/media/${slug}/folders`).set(...bearer(session)).send({ name }).expect(201);
   return res.body;
 }

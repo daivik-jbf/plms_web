@@ -11,7 +11,12 @@ export const updateCourseSchema = z
 export type CreateCourseInput = z.infer<typeof createCourseSchema>;
 export type UpdateCourseInput = z.infer<typeof updateCourseSchema>;
 
-export const lessonBodySchema = z.object({ title: titleSchema });
+// A lesson has a title and an optional description (at most 2,000 characters, like a course); empty means none.
+export const createLessonSchema = z.object({ title: titleSchema, description: descriptionSchema.nullish() });
+
+export const lessonBodySchema = z
+  .object({ title: titleSchema.optional(), description: descriptionSchema.nullable().optional() })
+  .refine((value) => value.title !== undefined || value.description !== undefined, { message: 'Nothing to change.' });
 
 // A topic's text can be longer than a course description: at most 10,000 characters; empty means none.
 export const topicDescriptionSchema = z
@@ -27,6 +32,7 @@ export const updateTopicSchema = z
   .object({ title: titleSchema.optional(), description: topicDescriptionSchema.nullable().optional() })
   .refine((value) => value.title !== undefined || value.description !== undefined, { message: 'Nothing to change.' });
 
+export type CreateLessonInput = z.infer<typeof createLessonSchema>;
 export type LessonInput = z.infer<typeof lessonBodySchema>;
 export type CreateTopicInput = z.infer<typeof createTopicSchema>;
 export type UpdateTopicInput = z.infer<typeof updateTopicSchema>;

@@ -1,7 +1,7 @@
 import { type KeyboardEvent, useRef, useState } from 'react';
-import type { LessonNode, TopicSummary } from '../../api/courses';
+import type { AttachmentSummary, LessonNode, TopicSummary } from '../../api/courses';
 import { Button } from '../../components/Button';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { MoveButton } from '../../components/MoveButton';
 import { useMoveFocus } from '../../components/use-move-focus';
 import styles from './Courses.module.css';
@@ -13,32 +13,44 @@ interface CourseOutlineProps {
   busy: boolean;
   onSelectTopic: (topicId: string) => void;
   onAddTopic: (lesson: LessonNode) => void;
-  onRenameLesson: (lesson: LessonNode) => void;
+  onEditLesson: (lesson: LessonNode) => void;
   onEditTopic: (topic: TopicSummary) => void;
   onMoveLesson: (lesson: LessonNode, delta: -1 | 1) => void;
   onMoveTopic: (lesson: LessonNode, topic: TopicSummary, delta: -1 | 1) => void;
   // Given only to Admins: the trash button appears on a row when its handler is given.
-  onCoverLesson?: (lesson: LessonNode) => void;
   onDeleteLesson?: (lesson: LessonNode) => void;
   onDeleteTopic?: (topic: TopicSummary) => void;
 }
 
-type Entry = { kind: 'lesson'; id: string; lesson: LessonNode } | { kind: 'topic'; id: string; lessonId: string };
+type Entry =
+  | { kind: 'lesson'; id: string; lesson: LessonNode }
+  | { kind: 'topic'; id: string; lessonId: string; topic: TopicSummary }
+  | { kind: 'attachment'; id: string; topicId: string };
+
+const KIND_ICONS: Record<AttachmentSummary['kind'], IconName> = { video: 'video', audio: 'podcasts', pdf: 'list', image: 'image' };
+
+// Only a topic that has files can be opened; one without is a leaf like a file is.
+const filesOf = (topic: TopicSummary): AttachmentSummary[] => topic.attachments ?? [];
 
 const filesText = (topic: TopicSummary): string =>
   topic.attachmentCount === 0 ? 'No files' : topic.attachmentCount === 1 ? '1 file' : `${topic.attachmentCount} files`;
 
-// The lessons and topics in the order the arrow keys walk them: a closed lesson hides its topics.
+// The lessons, topics and files in the order the arrow keys walk them: a closed lesson hides its topics, a closed topic its files.
 function visibleEntries(lessons: LessonNode[], closed: ReadonlySet<string>): Entry[] {
   return lessons.flatMap((lesson): Entry[] => [
     { kind: 'lesson', id: lesson.id, lesson },
-    ...(closed.has(lesson.id) ? [] : lesson.topics.map((topic): Entry => ({ kind: 'topic', id: topic.id, lessonId: lesson.id }))),
+    ...(closed.has(lesson.id)
+      ? []
+      : lesson.topics.flatMap((topic): Entry[] => [
+          { kind: 'topic', id: topic.id, lessonId: lesson.id, topic },
+          ...(closed.has(topic.id) ? [] : filesOf(topic).map((file): Entry => ({ kind: 'attachment', id: file.id, topicId: topic.id }))),
+        ])),
   ]);
 }
 
 // An accessible tree (the WAI-ARIA tree pattern): one item is reachable with Tab, the arrow keys do the rest, and the
 // state of every lesson is announced through aria-expanded. The buttons of a row are reached with Tab from that row.
-export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, onAddTopic, onRenameLesson, onEditTopic, onMoveLesson, onMoveTopic, onCoverLesson, onDeleteLesson, onDeleteTopic }: CourseOutlineProps) {
+export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, onAddTopic, onEditLesson, onEditTopic, onMoveLesson, onMoveTopic, onDeleteLesson, onDeleteTopic }: CourseOutlineProps) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [lastUsed, setLastUsed] = useState<string | null>(null);
   const elements = useRef(new Map<string, HTMLElement>());
@@ -90,21 +102,28 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
         if (entry.kind === 'lesson') {
           if (closed.has(entry.id)) toggle(entry.id, true);
           else if (entry.lesson.topics.length > 0) focusEntry(entries[index + 1]!.id);
+        } else if (entry.kind === 'topic' && filesOf(entry.topic).length > 0) {
+          if (closed.has(entry.id)) toggle(entry.id, true);
+          else focusEntry(entries[index + 1]!.id);
         }
         break;
       case 'ArrowLeft':
         event.preventDefault();
         if (entry.kind === 'lesson') {
           if (!closed.has(entry.id)) toggle(entry.id, false);
+        } else if (entry.kind === 'topic') {
+          if (filesOf(entry.topic).length > 0 && !closed.has(entry.id)) toggle(entry.id, false);
+          else focusEntry(entry.lessonId);
         } else {
-          focusEntry(entry.lessonId);
+          focusEntry(entry.topicId);
         }
         break;
       case 'Enter':
       case ' ':
         event.preventDefault();
         if (entry.kind === 'lesson') toggle(entry.id, closed.has(entry.id));
-        else onSelectTopic(entry.id);
+        else if (entry.kind === 'topic') onSelectTopic(entry.id);
+        else onSelectTopic(entry.topicId);
         break;
     }
   }
@@ -150,7 +169,7 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
                   <Icon name="plus" size={16} />
                   Add topic
                 </Button>
-                <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={lessonTab} aria-label={`Rename lesson ${lesson.title}`} title="Rename" onClick={() => onRenameLesson(lesson)}>
+                <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={lessonTab} aria-label={`Edit lesson ${lesson.title}`} title="Edit lesson" onClick={() => onEditLesson(lesson)}>
                   <Icon name="edit" size={16} />
                 </Button>
                 <MoveButton className={styles.iconButton} moveKey={`lesson:${lesson.id}:up`} label={`Move lesson ${lesson.title} up`} tabIndex={lessonTab} unavailable={busy || lessonIndex === 0} onMove={() => onMoveLesson(lesson, -1)}>
@@ -166,11 +185,6 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
                 >
                   <Icon name="down" size={16} />
                 </MoveButton>
-                {onCoverLesson ? (
-                  <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={lessonTab} aria-label={`Change the cover of lesson ${lesson.title}`} title="Cover" disabled={busy} onClick={() => onCoverLesson(lesson)}>
-                    <Icon name="image" size={16} />
-                  </Button>
-                ) : null}
                 {onDeleteLesson ? (
                   <Button variant="secondary" size="small" className={styles.iconButton} tabIndex={lessonTab} aria-label={`Delete lesson ${lesson.title}`} title="Delete" disabled={busy} onClick={() => onDeleteLesson(lesson)}>
                     <Icon name="trash" size={16} />
@@ -185,11 +199,14 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
                 <ul role="group" className={styles.group}>
                   {lesson.topics.map((topic, topicIndex) => {
                     const topicTab = tabStop === topic.id ? 0 : -1;
+                    const files = filesOf(topic);
+                    const topicOpen = !closed.has(topic.id);
                     return (
                       <li
                         key={topic.id}
                         role="treeitem"
                         aria-level={2}
+                        aria-expanded={files.length > 0 ? topicOpen : undefined}
                         aria-selected={topic.id === selectedTopicId}
                         aria-label={topic.title}
                         data-id={topic.id}
@@ -200,6 +217,20 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
                       >
                         <div className={styles.row}>
                           <span className={styles.label} onClick={() => onSelectTopic(topic.id)}>
+                            {files.length > 0 ? (
+                              <span
+                                aria-hidden="true"
+                                className={topicOpen ? `${styles.twisty} ${styles.twistyOpen}` : styles.twisty}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggle(topic.id, !topicOpen);
+                                }}
+                              >
+                                <Icon name="chevron" size={16} />
+                              </span>
+                            ) : (
+                              <span aria-hidden="true" className={styles.twistySpace} />
+                            )}
                             {topic.coverUrl ? <img className={styles.thumb} src={topic.coverUrl} alt="" loading="lazy" /> : null}
                             {topic.title}
                           </span>
@@ -235,6 +266,35 @@ export function CourseOutline({ lessons, selectedTopicId, busy, onSelectTopic, o
                             ) : null}
                           </div>
                         </div>
+                        {topicOpen && files.length > 0 ? (
+                          <ul role="group" className={styles.group}>
+                            {files.map((file) => {
+                              const fileTab = tabStop === file.id ? 0 : -1;
+                              return (
+                                <li
+                                  key={file.id}
+                                  role="treeitem"
+                                  aria-level={3}
+                                  aria-label={file.title}
+                                  data-id={file.id}
+                                  tabIndex={fileTab}
+                                  ref={register(file.id)}
+                                  onFocus={noteFocus(file.id)}
+                                  className={`${styles.item} ${styles.leaf}`}
+                                >
+                                  <div className={styles.row}>
+                                    <span className={`${styles.label} ${styles.fileLabel}`} onClick={() => onSelectTopic(topic.id)}>
+                                      <span aria-hidden="true" className={styles.fileIcon}>
+                                        <Icon name={KIND_ICONS[file.kind]} size={16} />
+                                      </span>
+                                      {file.title}
+                                    </span>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : null}
                       </li>
                     );
                   })}

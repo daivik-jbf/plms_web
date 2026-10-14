@@ -3,7 +3,10 @@ import { ApiError, describeError } from '../../api/client';
 import { type CourseTree, updateCourse, uploadCourseCover } from '../../api/courses';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { Dialog } from '../../components/Dialog';
+import { CurrentCover } from '../../components/CurrentCover';
+import { CoverField } from '../../components/CoverField';
+import { changesOf, ChangesDialog, coverChange, textChange } from '../../components/ChangesDialog';
+import { GuardedDialog, useDialogGuard } from '../../components/GuardedDialog';
 import { TextArea } from '../../components/TextArea';
 import { TextField } from '../../components/TextField';
 import { checkCoverFile } from '../../uploads/limits';
@@ -19,9 +22,9 @@ interface EditCourseDialogProps {
 export function EditCourseDialog({ course, onClose, onChanged }: EditCourseDialogProps) {
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={course !== null} onClose={onClose} title="Edit course" blocked={busy}>
+    <GuardedDialog discard="Discard your changes?" open={course !== null} onClose={onClose} title="Edit course" blocked={busy}>
       {course ? <EditForm course={course} busy={busy} setBusy={setBusy} onClose={onClose} onChanged={onChanged} /> : null}
-    </Dialog>
+    </GuardedDialog>
   );
 }
 
@@ -42,6 +45,15 @@ function EditForm({
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ field: 'title' | 'cover' } | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  // What the person has changed so far; Save is only possible when there is something, and shows it first.
+  const review = changesOf(
+    textChange('Title', course.title, title),
+    textChange('Description', course.description, description),
+    coverChange(Boolean(course.coverUrl), cover),
+  );
+  const dirty = review.length > 0;
+  const requestClose = useDialogGuard(dirty);
 
   useEffect(() => {
     if (focusRequest) (focusRequest.field === 'title' ? titleRef : coverRef).current?.focus();
@@ -60,6 +72,14 @@ function EditForm({
       return;
     }
 
+    if (!dirty) return;
+    setReviewing(true);
+  }
+
+  // Runs once the person has confirmed the list of changes.
+  async function save() {
+    setReviewing(false);
+    setFailure(null);
     const changes: { title?: string; description?: string } = {};
     if (title.trim() !== course.title) changes.title = title.trim();
     if (description.trim() !== (course.description ?? '')) changes.description = description.trim();
@@ -95,23 +115,22 @@ function EditForm({
       {failure ? <Alert tone="error">{failure}</Alert> : null}
       <TextField ref={titleRef} label="Course title" autoComplete="off" maxLength={200} data-autofocus value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} />
       <TextArea label="Description" maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} error={errors.description} />
-      <TextField
+      <CurrentCover url={course.coverUrl ?? null} />
+      <CoverField
         ref={coverRef}
-        label="Cover image"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
         hint={course.coverUrl ? 'Choosing a file replaces the current cover. JPEG, PNG or WebP, up to 10 MB.' : 'Optional. JPEG, PNG or WebP, up to 10 MB.'}
-        onChange={(e) => setCover(e.target.files?.[0] ?? null)}
+        onChange={setCover}
         error={errors.cover}
       />
       <div className={media.dialogActions}>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" onClick={requestClose} disabled={busy}>
           Cancel
         </Button>
-        <Button type="submit" busy={busy}>
+        <Button type="submit" busy={busy} disabled={!dirty}>
           Save
         </Button>
       </div>
+      <ChangesDialog open={reviewing} changes={review} onBack={() => setReviewing(false)} onConfirm={() => void save()} />
     </form>
   );
 }

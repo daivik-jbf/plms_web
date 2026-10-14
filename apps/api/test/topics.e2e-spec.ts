@@ -46,7 +46,7 @@ describe('topics', () => {
         .send({ title: '  Fire exits ', description: '  Keep them clear.\nNever lock them.  ' })
         .expect(201);
       expect(first.body.id).toBe(course.id);
-      expect(first.body.lessons[0].topics).toEqual([{ id: expect.any(String), title: 'Fire exits', position: 0, coverUrl: null, attachmentCount: 0 }]);
+      expect(first.body.lessons[0].topics).toEqual([{ id: expect.any(String), title: 'Fire exits', position: 0, coverUrl: null, attachmentCount: 0, attachments: [] }]);
       const second = await addTopicViaApi(app, owner.session, lesson.id, { title: 'Alarms' });
       expect(second.lessons[0].topics.map((topic) => [topic.title, topic.position])).toEqual([
         ['Fire exits', 0],

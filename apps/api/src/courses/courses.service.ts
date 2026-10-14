@@ -3,7 +3,7 @@ import { and, asc, count, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
 import { DB, type Database, type DbExecutor } from '../db/db.module';
-import { type AuditChanges, type Course, courses, type FileRow, files, lessons, topicAttachments, topics, users } from '../db/schema';
+import { type AuditChanges, type Course, courses, type FileRow, files, lessons, mediaItems, topicAttachments, topics, users } from '../db/schema';
 import { actorOf } from '../media/actor';
 import { type CoverOwner, type CoverUpload, CoversService } from '../media/covers.service';
 import type { CoverStartInput } from '../media/media.schemas';
@@ -29,6 +29,13 @@ export interface CourseView extends CourseBase {
   topicCount: number;
 }
 
+// A file of a topic as the course tree lists it.
+export interface AttachmentSummary {
+  id: string;
+  kind: 'video' | 'audio' | 'pdf' | 'image';
+  title: string;
+}
+
 export interface TopicSummary {
   id: string;
   title: string;
@@ -37,11 +44,13 @@ export interface TopicSummary {
   coverUrl: string | null;
   // Ready attachments only: one that is still uploading is not part of the topic yet.
   attachmentCount: number;
+  attachments: AttachmentSummary[];
 }
 
 export interface LessonView {
   id: string;
   title: string;
+  description: string | null;
   position: number;
   coverUrl: string | null;
   topics: TopicSummary[];
@@ -140,12 +149,19 @@ export class CoursesService {
               ),
             )
             .orderBy(asc(topics.position), asc(topics.createdAt), asc(topics.id));
-    const attachmentCounts =
+    const attachmentRows =
       topicRows.length === 0
         ? []
         : await executor
-            .select({ topicId: topicAttachments.topicId, total: count() })
+            .select({
+              id: topicAttachments.id,
+              topicId: topicAttachments.topicId,
+              kind: topicAttachments.kind,
+              title: topicAttachments.title,
+              itemTitle: mediaItems.title,
+            })
             .from(topicAttachments)
+            .leftJoin(mediaItems, eq(mediaItems.id, topicAttachments.libraryItemId))
             .where(
               and(
                 inArray(
@@ -156,14 +172,20 @@ export class CoursesService {
                 isNull(topicAttachments.deletedAt),
               ),
             )
-            .groupBy(topicAttachments.topicId);
-    const countOf = new Map(attachmentCounts.map((entry) => [entry.topicId, entry.total]));
+            .orderBy(asc(topicAttachments.position), asc(topicAttachments.createdAt), asc(topicAttachments.id));
+    const attachmentsOf = new Map<string, AttachmentSummary[]>();
+    for (const attachment of attachmentRows) {
+      const list = attachmentsOf.get(attachment.topicId) ?? [];
+      list.push({ id: attachment.id, kind: attachment.kind, title: attachment.title ?? attachment.itemTitle ?? '' });
+      attachmentsOf.set(attachment.topicId, list);
+    }
     const coverOf = await this.coverLinks([...lessonRows, ...topicRows].map((row) => row.coverFileId));
     return {
       ...(await this.toBase(row)),
       lessons: lessonRows.map((lesson) => ({
         id: lesson.id,
         title: lesson.title,
+        description: lesson.description,
         position: lesson.position,
         coverUrl: coverOf.get(lesson.coverFileId ?? '') ?? null,
         topics: topicRows
@@ -173,7 +195,8 @@ export class CoursesService {
             title: topic.title,
             position: topic.position,
             coverUrl: coverOf.get(topic.coverFileId ?? '') ?? null,
-            attachmentCount: countOf.get(topic.id) ?? 0,
+            attachmentCount: attachmentsOf.get(topic.id)?.length ?? 0,
+            attachments: attachmentsOf.get(topic.id) ?? [],
           })),
       })),
     };
